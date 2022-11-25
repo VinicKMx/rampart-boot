@@ -1,0 +1,31 @@
+#ifndef RAMPART_STATUS_H
+#define RAMPART_STATUS_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum rampart_status {
+    RAMPART_OK = 0,
+    RAMPART_ERR_INVALID_ARGUMENT,
+    RAMPART_ERR_BOUNDS,
+    RAMPART_ERR_OVERFLOW,
+    RAMPART_ERR_MANIFEST_FORMAT,
+    RAMPART_ERR_SIGNATURE,
+    RAMPART_ERR_KEY_REVOKED,
+    RAMPART_ERR_SECURITY_EPOCH,
+    RAMPART_ERR_TARGET_MISMATCH,
+    RAMPART_ERR_SLOT_INVALID,
+    RAMPART_ERR_TRANSACTION_CORRUPT,
+    RAMPART_ERR_HEALTH_FAILED,
+    RAMPART_ERR_NO_BOOTABLE_IMAGE,
+    RAMPART_ERR_INTERNAL
+} rampart_status_t;
+
+const char *rampart_status_string(rampart_status_t status);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

@@ -1,0 +1,84 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "host-debug",
+      "displayName": "Host Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "host-sanitize",
+      "displayName": "Host Debug with ASan/UBSan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "RAMPART_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "host-tidy",
+      "displayName": "Host Debug with clang-tidy",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-tidy",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "RAMPART_ENABLE_CLANG_TIDY": "ON"
+      }
+    },
+    {
+      "name": "stm32u585",
+      "displayName": "STM32U585 Cortex-M33",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/stm32u585",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "RAMPART_BUILD_TESTS": "OFF",
+        "RAMPART_BUILD_EMBEDDED": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug"
+    },
+    {
+      "name": "host-sanitize",
+      "configurePreset": "host-sanitize"
+    },
+    {
+      "name": "host-tidy",
+      "configurePreset": "host-tidy"
+    },
+    {
+      "name": "stm32u585",
+      "configurePreset": "stm32u585"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "host-sanitize",
+      "configurePreset": "host-sanitize",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
+
