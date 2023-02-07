@@ -109,3 +109,8 @@ Only `rampart self-check` is implemented at this checkpoint.
 Rampart does not implement cryptographic primitives. It defines protocol, policy, state, and
 authorization rules over vetted cryptographic backends. This repository does not currently make
 production security claims. See [SECURITY.md](SECURITY.md).
+
+## License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
+option.
