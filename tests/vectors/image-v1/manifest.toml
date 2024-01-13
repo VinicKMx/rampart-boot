@@ -1,0 +1,15 @@
+artifact_id = "industrial-controller-main-2.4.0"
+vendor_id = 1380011344
+product_id = 1
+hardware_family = 1413
+hardware_revision_min = 1
+hardware_revision_max = 3
+component_id = 16
+version = "2.4.0"
+security_epoch = 12
+signature_role = "RELEASE"
+rollback_policy = "fallback"
+
+[trial]
+max_attempts = 3
+probation_period_ms = 30000

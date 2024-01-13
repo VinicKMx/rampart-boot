@@ -4,6 +4,11 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 
+mod format;
+mod keys;
+
+use format::{DeviceTarget, VerificationOptions};
+
 #[derive(Debug, Parser)]
 #[command(
     name = "rampart",
@@ -58,17 +63,43 @@ enum ImageCommand {
     /// Inspect a .rampart image artifact.
     Inspect { artifact: PathBuf },
     /// Verify a .rampart image artifact.
-    Verify { artifact: PathBuf },
+    Verify(ImageVerifyArgs),
     /// Sign a payload and manifest into a .rampart image artifact.
-    Sign {
-        payload: PathBuf,
-        #[arg(long)]
-        manifest: PathBuf,
-        #[arg(long)]
-        key: PathBuf,
-        #[arg(short, long)]
-        output: PathBuf,
-    },
+    Sign(ImageSignArgs),
+}
+
+#[derive(Debug, Args)]
+struct ImageVerifyArgs {
+    artifact: PathBuf,
+    /// Require at least this security epoch.
+    #[arg(long, default_value_t = 0)]
+    minimum_security_epoch: u32,
+    /// Expected vendor ID for target binding checks.
+    #[arg(long, value_parser = parse_u32_value)]
+    vendor_id: Option<u32>,
+    /// Expected product ID for target binding checks.
+    #[arg(long, value_parser = parse_u32_value)]
+    product_id: Option<u32>,
+    /// Expected hardware family for target binding checks.
+    #[arg(long, value_parser = parse_u32_value)]
+    hardware_family: Option<u32>,
+    /// Expected component ID for target binding checks.
+    #[arg(long, value_parser = parse_u32_value)]
+    component_id: Option<u32>,
+}
+
+#[derive(Debug, Args)]
+struct ImageSignArgs {
+    payload: PathBuf,
+    #[arg(long)]
+    manifest: PathBuf,
+    #[arg(long)]
+    key: PathBuf,
+    /// Override the derived signing key ID with an explicit 8-byte hex value.
+    #[arg(long)]
+    key_id: Option<String>,
+    #[arg(short, long)]
+    output: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -97,6 +128,7 @@ struct KeyArgs {
 enum KeyCommand {
     /// Generate a signing key.
     Generate {
+        /// Logical role label recorded by users and release process metadata.
         #[arg(long)]
         role: String,
         #[arg(short, long)]
@@ -205,8 +237,8 @@ impl ToolStatus {
     fn current() -> Self {
         Self {
             tool: "rampart",
-            status: "host tooling foundation available",
-            implemented_checkpoint: 1,
+            status: "image format tooling available",
+            implemented_checkpoint: 3,
         }
     }
 }
@@ -226,9 +258,9 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::SelfCheck(args) => run_self_check(args),
-        Command::Image(args) => planned("image", format!("{:?}", args.command)),
+        Command::Image(args) => run_image(args),
         Command::Bundle(args) => planned("bundle", format!("{:?}", args.command)),
-        Command::Key(args) => planned("key", format!("{:?}", args.command)),
+        Command::Key(args) => run_key(args),
         Command::Trust(args) => planned("trust", format!("{:?}", args.command)),
         Command::Manifest(args) => planned("manifest", format!("{:?}", args.command)),
         Command::Simulate(args) => planned("simulate", format!("{:?}", args.command)),
@@ -245,10 +277,80 @@ fn run_self_check(args: SelfCheckArgs) -> Result<(), String> {
         let encoded = serde_json::to_string_pretty(&status).map_err(|error| error.to_string())?;
         println!("{encoded}");
     } else {
-        println!("Rampart host tooling foundation available");
+        println!("Rampart image format tooling available");
     }
 
     Ok(())
+}
+
+fn run_image(args: ImageArgs) -> Result<(), String> {
+    match args.command {
+        ImageCommand::Inspect { artifact } => {
+            let bytes = std::fs::read(&artifact)
+                .map_err(|error| format!("failed to read {}: {error}", artifact.display()))?;
+            let report = format::inspect_image(&bytes)?;
+            print!("{report}");
+            Ok(())
+        }
+        ImageCommand::Verify(args) => {
+            let bytes = std::fs::read(&args.artifact)
+                .map_err(|error| format!("failed to read {}: {error}", args.artifact.display()))?;
+            let options = VerificationOptions {
+                device_target: image_verify_target(&args)?,
+                minimum_security_epoch: args.minimum_security_epoch,
+            };
+            let report = format::verify_image(&bytes, &options)?;
+            print!("{}", format::format_verification_report(&report));
+
+            if report.is_valid() {
+                Ok(())
+            } else {
+                Err("image verification failed".to_string())
+            }
+        }
+        ImageCommand::Sign(args) => {
+            let image = format::sign_image(
+                &args.payload,
+                &args.manifest,
+                &args.key,
+                &args.output,
+                args.key_id.as_deref(),
+            )?;
+            println!(
+                "wrote {}\nartifact_id {}\nkey_id 0x{}",
+                args.output.display(),
+                image.manifest.artifact_id,
+                keys::key_id_hex(&image.manifest.key_id)
+            );
+            Ok(())
+        }
+    }
+}
+
+fn run_key(args: KeyArgs) -> Result<(), String> {
+    match args.command {
+        KeyCommand::Generate { role, output } => {
+            validate_key_role_label(&role)?;
+            let key_id = keys::generate_private_key(&output)?;
+            println!(
+                "wrote {}\nrole {}\nalgorithm ECDSA_P256_SHA256\nkey_id 0x{}",
+                output.display(),
+                role,
+                key_id
+            );
+            Ok(())
+        }
+        KeyCommand::Inspect { key } => {
+            let report = keys::inspect_private_key(&key)?;
+            print!("{report}");
+            Ok(())
+        }
+        KeyCommand::Public { key, output } => {
+            let key_id = keys::export_public_key(&key, &output)?;
+            println!("wrote {}\nkey_id 0x{}", output.display(), key_id);
+            Ok(())
+        }
+    }
 }
 
 fn planned(domain: &str, command: String) -> Result<(), String> {
@@ -257,11 +359,61 @@ fn planned(domain: &str, command: String) -> Result<(), String> {
     ))
 }
 
+fn image_verify_target(args: &ImageVerifyArgs) -> Result<Option<DeviceTarget>, String> {
+    let provided = [
+        args.vendor_id.is_some(),
+        args.product_id.is_some(),
+        args.hardware_family.is_some(),
+        args.component_id.is_some(),
+    ]
+    .into_iter()
+    .filter(|value| *value)
+    .count();
+
+    if provided == 0 {
+        return Ok(None);
+    }
+
+    if provided != 4 {
+        return Err(
+            "target binding verification requires --vendor-id, --product-id, --hardware-family, and --component-id".to_string(),
+        );
+    }
+
+    Ok(Some(DeviceTarget {
+        vendor_id: args.vendor_id.expect("checked above"),
+        product_id: args.product_id.expect("checked above"),
+        hardware_family: args.hardware_family.expect("checked above"),
+        component_id: args.component_id.expect("checked above"),
+    }))
+}
+
+fn validate_key_role_label(role: &str) -> Result<(), String> {
+    match role {
+        "RELEASE" | "SECURITY" | "BOOT_MANAGER" | "RECOVERY" | "FACTORY" | "DEVELOPMENT" => Ok(()),
+        _ => Err(format!("unknown key role {role}")),
+    }
+}
+
+fn parse_u32_value(value: &str) -> Result<u32, String> {
+    if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        return u32::from_str_radix(hex, 16)
+            .map_err(|_| format!("invalid hexadecimal u32 value {value}"));
+    }
+
+    value
+        .parse::<u32>()
+        .map_err(|_| format!("invalid decimal u32 value {value}"))
+}
+
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
 
-    use super::{Cli, ToolStatus};
+    use super::{Cli, ToolStatus, parse_u32_value};
 
     #[test]
     fn cli_shape_is_valid() {
@@ -273,6 +425,12 @@ mod tests {
         let encoded = serde_json::to_string(&ToolStatus::current()).expect("serialize status");
 
         assert!(encoded.contains("\"tool\":\"rampart\""));
-        assert!(encoded.contains("\"implemented_checkpoint\":1"));
+        assert!(encoded.contains("\"implemented_checkpoint\":3"));
+    }
+
+    #[test]
+    fn parses_decimal_and_hex_u32_values() {
+        assert_eq!(parse_u32_value("123").expect("decimal"), 123);
+        assert_eq!(parse_u32_value("0x00000585").expect("hex"), 0x585);
     }
 }

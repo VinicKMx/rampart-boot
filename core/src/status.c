@@ -10,6 +10,8 @@ const char *rampart_status_string(rampart_status_t status) {
         return "bounds error";
     case RAMPART_ERR_OVERFLOW:
         return "integer overflow";
+    case RAMPART_ERR_IMAGE_FORMAT:
+        return "image format error";
     case RAMPART_ERR_MANIFEST_FORMAT:
         return "manifest format error";
     case RAMPART_ERR_SIGNATURE:

@@ -11,10 +11,11 @@ operationally healthy, and safe to commit.
 
 ## Current status
 
-This repository is at the foundation stage. The permanent build structure, C core contracts, Stage 0
-and Stage 1 skeletons, Rust CLI workspace, host tests, sanitizers, CI, and the first security
-documents are present. Image signing, bundle installation, flash transactions, health contracts,
-journaling, and hardware ports are still upcoming checkpoints.
+This repository has the permanent build foundation, first security specifications, Stage 0 and
+Stage 1 skeletons, C core contracts, and the initial `.rampart` single-image format. The Rust CLI
+can generate P-256 signing keys, sign image artifacts, inspect them, and verify payload digest,
+signature, target binding, and security epoch policy inputs. Bundle installation, flash
+transactions, health contracts, journaling, and hardware ports are still upcoming checkpoints.
 
 ## Security model summary
 
@@ -78,6 +79,22 @@ cargo test --workspace
 cargo run -p rampart -- self-check
 ```
 
+Create and verify a single-image artifact:
+
+```bash
+cargo run -p rampart -- key generate --role RELEASE --output release.pem
+cargo run -p rampart -- image sign firmware.bin \
+  --manifest tests/vectors/image-v1/manifest.toml \
+  --key release.pem \
+  --output firmware.rampart
+cargo run -p rampart -- image verify firmware.rampart \
+  --vendor-id 0x52414d50 \
+  --product-id 1 \
+  --hardware-family 0x00000585 \
+  --component-id 16 \
+  --minimum-security-epoch 12
+```
+
 ## Tooling
 
 The final CLI is `rampart`. The command tree is already reserved:
@@ -94,7 +111,9 @@ rampart journal
 rampart recovery
 ```
 
-Only `rampart self-check` is implemented at this checkpoint.
+`rampart self-check`, `rampart key generate`, `rampart key inspect`, `rampart key public`,
+`rampart image sign`, `rampart image inspect`, and `rampart image verify` are implemented.
+Remaining command groups are reserved for later checkpoints.
 
 ## Documentation
 
@@ -102,6 +121,8 @@ Only `rampart self-check` is implemented at this checkpoint.
 - [Threat model](docs/threat-model.md)
 - [Invariants](docs/invariants.md)
 - [Security model](docs/security-model.md)
+- [Image format](docs/image-format.md)
+- [Bundle format](docs/bundle-format.md)
 - [STM32U585 memory map](docs/platforms/stm32u585-memory-map.md)
 
 ## Security disclaimer

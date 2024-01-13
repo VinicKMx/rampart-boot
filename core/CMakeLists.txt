@@ -1,5 +1,6 @@
 add_library(
     rampart_core STATIC
+    src/image.c
     src/manifest.c
     src/status.c
     src/target.c)
