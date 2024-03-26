@@ -1,81 +1,6 @@
 #include "rampart/manifest.h"
 
-#include <stdbool.h>
-
-static bool bytes_match(const uint8_t *left, const char *right, size_t len) {
-    size_t index = 0u;
-
-    for (index = 0u; index < len; ++index) {
-        if (left[index] != (uint8_t)right[index]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool range_available(size_t offset, size_t len, size_t total_len, size_t *end) {
-    if (offset > total_len) {
-        return false;
-    }
-
-    if (len > (total_len - offset)) {
-        return false;
-    }
-
-    if (end != NULL) {
-        *end = offset + len;
-    }
-
-    return true;
-}
-
-static rampart_status_t read_u16_le(const uint8_t *bytes, size_t len, size_t offset,
-                                    uint16_t *out) {
-    size_t end = 0u;
-
-    if ((bytes == NULL) || (out == NULL)) {
-        return RAMPART_ERR_INVALID_ARGUMENT;
-    }
-
-    if (!range_available(offset, 2u, len, &end)) {
-        return RAMPART_ERR_BOUNDS;
-    }
-
-    (void)end;
-    *out = (uint16_t)((uint16_t)bytes[offset] | ((uint16_t)bytes[offset + 1u] << 8u));
-    return RAMPART_OK;
-}
-
-static rampart_status_t read_u32_le(const uint8_t *bytes, size_t len, size_t offset,
-                                    uint32_t *out) {
-    size_t end = 0u;
-
-    if ((bytes == NULL) || (out == NULL)) {
-        return RAMPART_ERR_INVALID_ARGUMENT;
-    }
-
-    if (!range_available(offset, 4u, len, &end)) {
-        return RAMPART_ERR_BOUNDS;
-    }
-
-    (void)end;
-    *out = ((uint32_t)bytes[offset]) | ((uint32_t)bytes[offset + 1u] << 8u) |
-           ((uint32_t)bytes[offset + 2u] << 16u) | ((uint32_t)bytes[offset + 3u] << 24u);
-    return RAMPART_OK;
-}
-
-static bool all_zeroes(const uint8_t *bytes, size_t len) {
-    size_t index = 0u;
-
-    for (index = 0u; index < len; ++index) {
-        if (bytes[index] != 0u) {
-            return false;
-        }
-    }
-
-    return true;
-}
+#include "binary.h"
 
 static bool valid_key_role(uint16_t role) {
     return (role == RAMPART_KEY_ROLE_RELEASE) || (role == RAMPART_KEY_ROLE_SECURITY) ||
@@ -105,11 +30,11 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    if (!bytes_match(bytes, "RPMFST01", 8u)) {
+    if (!rampart_binary_bytes_match(bytes, "RPMFST01", 8u)) {
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u32_le(bytes, len, 12u, &manifest_size);
+    status = rampart_binary_read_u32_le(bytes, len, 12u, &manifest_size);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -118,7 +43,7 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u16_le(bytes, len, 8u, &format_version);
+    status = rampart_binary_read_u16_le(bytes, len, 8u, &format_version);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -128,7 +53,7 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
     }
     parsed.format_version = (uint32_t)format_version;
 
-    status = read_u16_le(bytes, len, 10u, &header_size);
+    status = rampart_binary_read_u16_le(bytes, len, 10u, &header_size);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -137,23 +62,23 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u32_le(bytes, len, 16u, &parsed.target.vendor_id);
+    status = rampart_binary_read_u32_le(bytes, len, 16u, &parsed.target.vendor_id);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 20u, &parsed.target.product_id);
+    status = rampart_binary_read_u32_le(bytes, len, 20u, &parsed.target.product_id);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 24u, &parsed.target.hardware_family);
+    status = rampart_binary_read_u32_le(bytes, len, 24u, &parsed.target.hardware_family);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 28u, &parsed.hardware_revision_min);
+    status = rampart_binary_read_u32_le(bytes, len, 28u, &parsed.hardware_revision_min);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 32u, &parsed.hardware_revision_max);
+    status = rampart_binary_read_u32_le(bytes, len, 32u, &parsed.hardware_revision_max);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -162,27 +87,27 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u32_le(bytes, len, 36u, &parsed.target.component_id);
+    status = rampart_binary_read_u32_le(bytes, len, 36u, &parsed.target.component_id);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 40u, &parsed.security_epoch);
+    status = rampart_binary_read_u32_le(bytes, len, 40u, &parsed.security_epoch);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 44u, &parsed.version_major);
+    status = rampart_binary_read_u16_le(bytes, len, 44u, &parsed.version_major);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 46u, &parsed.version_minor);
+    status = rampart_binary_read_u16_le(bytes, len, 46u, &parsed.version_minor);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 48u, &parsed.version_patch);
+    status = rampart_binary_read_u16_le(bytes, len, 48u, &parsed.version_patch);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 50u, &parsed.digest_algorithm);
+    status = rampart_binary_read_u16_le(bytes, len, 50u, &parsed.digest_algorithm);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -191,14 +116,14 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u32_le(bytes, len, 52u, &parsed.payload_size);
+    status = rampart_binary_read_u32_le(bytes, len, 52u, &parsed.payload_size);
     if (status != RAMPART_OK) {
         return status;
     }
     parsed.payload_digest = &bytes[56u];
     parsed.payload_digest_len = RAMPART_SHA256_DIGEST_SIZE;
 
-    status = read_u16_le(bytes, len, 88u, &parsed.signature_algorithm);
+    status = rampart_binary_read_u16_le(bytes, len, 88u, &parsed.signature_algorithm);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -207,7 +132,7 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u16_le(bytes, len, 90u, &parsed.required_key_role);
+    status = rampart_binary_read_u16_le(bytes, len, 90u, &parsed.required_key_role);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -216,11 +141,11 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u16_le(bytes, len, 92u, &parsed.signature_threshold);
+    status = rampart_binary_read_u16_le(bytes, len, 92u, &parsed.signature_threshold);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 94u, &parsed.signature_count);
+    status = rampart_binary_read_u16_le(bytes, len, 94u, &parsed.signature_count);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -232,11 +157,11 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
     parsed.key_id = &bytes[96u];
     parsed.key_id_len = RAMPART_KEY_ID_SIZE;
 
-    status = read_u16_le(bytes, len, 104u, &parsed.trial_max_attempts);
+    status = rampart_binary_read_u16_le(bytes, len, 104u, &parsed.trial_max_attempts);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 106u, &parsed.rollback_policy);
+    status = rampart_binary_read_u16_le(bytes, len, 106u, &parsed.rollback_policy);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -245,11 +170,11 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    status = read_u32_le(bytes, len, 108u, &parsed.trial_probation_ms);
+    status = rampart_binary_read_u32_le(bytes, len, 108u, &parsed.trial_probation_ms);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 112u, &artifact_id_len);
+    status = rampart_binary_read_u16_le(bytes, len, 112u, &artifact_id_len);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -258,23 +183,23 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    if (!range_available(RAMPART_MANIFEST_HEADER_SIZE_V1, (size_t)artifact_id_len, len,
-                         &artifact_id_end)) {
+    if (!rampart_binary_range_available(RAMPART_MANIFEST_HEADER_SIZE_V1, (size_t)artifact_id_len,
+                                        len, &artifact_id_end)) {
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
     parsed.artifact_id = &bytes[RAMPART_MANIFEST_HEADER_SIZE_V1];
     parsed.artifact_id_len = (size_t)artifact_id_len;
 
-    status = read_u16_le(bytes, len, 114u, &parsed.requirement_count);
+    status = rampart_binary_read_u16_le(bytes, len, 114u, &parsed.requirement_count);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 116u, &parsed.dependency_count);
+    status = rampart_binary_read_u16_le(bytes, len, 116u, &parsed.dependency_count);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 118u, &parsed.health_required_count);
+    status = rampart_binary_read_u16_le(bytes, len, 118u, &parsed.health_required_count);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -284,11 +209,11 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    if (!all_zeroes(&bytes[120u], RAMPART_MANIFEST_HEADER_SIZE_V1 - 120u)) {
+    if (!rampart_binary_all_zeroes(&bytes[120u], RAMPART_MANIFEST_HEADER_SIZE_V1 - 120u)) {
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    if (!all_zeroes(&bytes[artifact_id_end], len - artifact_id_end)) {
+    if (!rampart_binary_all_zeroes(&bytes[artifact_id_end], len - artifact_id_end)) {
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
