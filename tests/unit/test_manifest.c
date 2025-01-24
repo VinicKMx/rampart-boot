@@ -373,6 +373,26 @@ static void test_manifest_rejects_nonzero_reserved_and_padding_bytes(void) {
     }
 }
 
+static void test_manifest_rejects_noncanonical_padding_lengths(void) {
+    struct manifest_fixture fixture = {0};
+    size_t removed_padding = 0u;
+
+    for (removed_padding = 1u; removed_padding <= 3u; ++removed_padding) {
+        EXPECT_TRUE(build_valid_manifest(&fixture, 1u));
+        fixture.len -= removed_padding;
+        EXPECT_TRUE(
+            write_u32_le(fixture.bytes, fixture.len, manifest_size_offset, (uint32_t)fixture.len));
+        expect_rejected("manifest padding is shorter than canonical", fixture.bytes, fixture.len);
+    }
+
+    EXPECT_TRUE(build_valid_manifest(&fixture, 1u));
+    fixture.bytes[fixture.len] = 0u;
+    ++fixture.len;
+    EXPECT_TRUE(
+        write_u32_le(fixture.bytes, fixture.len, manifest_size_offset, (uint32_t)fixture.len));
+    expect_rejected("manifest padding is longer than canonical", fixture.bytes, fixture.len);
+}
+
 static void test_manifest_rejects_unsupported_extension_counts(void) {
     static const struct u16_mutation mutations[] = {
         {"unsupported requirement count", requirement_count_offset, 1u},
@@ -394,6 +414,7 @@ int main(void) {
     test_manifest_rejects_unsupported_field_values();
     test_manifest_rejects_invalid_artifact_id_lengths();
     test_manifest_rejects_nonzero_reserved_and_padding_bytes();
+    test_manifest_rejects_noncanonical_padding_lengths();
     test_manifest_rejects_unsupported_extension_counts();
 
     if (failures != 0) {

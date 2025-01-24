@@ -20,6 +20,8 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
     uint32_t manifest_size = 0u;
     uint16_t artifact_id_len = 0u;
     size_t artifact_id_end = 0u;
+    size_t padding_len = 0u;
+    size_t canonical_manifest_size = 0u;
     rampart_status_t status = RAMPART_OK;
 
     if ((bytes == NULL) || (out == NULL)) {
@@ -183,8 +185,20 @@ rampart_status_t rampart_manifest_parse_v1(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
-    if (!rampart_binary_range_available(RAMPART_MANIFEST_HEADER_SIZE_V1, (size_t)artifact_id_len,
-                                        len, &artifact_id_end)) {
+    status = rampart_binary_checked_add_size(RAMPART_MANIFEST_HEADER_SIZE_V1,
+                                             (size_t)artifact_id_len, &artifact_id_end);
+    if (status != RAMPART_OK) {
+        return status;
+    }
+
+    padding_len = (4u - (artifact_id_end % 4u)) % 4u;
+    status =
+        rampart_binary_checked_add_size(artifact_id_end, padding_len, &canonical_manifest_size);
+    if (status != RAMPART_OK) {
+        return status;
+    }
+
+    if (canonical_manifest_size != len) {
         return RAMPART_ERR_MANIFEST_FORMAT;
     }
 
