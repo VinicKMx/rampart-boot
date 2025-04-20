@@ -45,6 +45,16 @@ static const size_t image_reserved_offset = 48u;
 
 static const size_t manifest_payload_size_offset = 52u;
 
+static const size_t signature_version_offset = 8u;
+static const size_t signature_header_size_offset = 10u;
+static const size_t signature_section_size_offset = 12u;
+static const size_t signature_signed_region_offset = 16u;
+static const size_t signature_signed_region_size_offset = 20u;
+static const size_t signature_count_offset = 24u;
+static const size_t signature_algorithm_offset = 26u;
+static const size_t signature_record_size_offset = 28u;
+static const size_t signature_reserved_offset = 30u;
+
 #define EXPECT_TRUE(expression)                                                                    \
     do {                                                                                           \
         if (!(expression)) {                                                                       \
@@ -250,6 +260,68 @@ static void mutate_header_u32_and_expect_rejected(const struct u32_mutation *mut
     expect_rejected(mutation->name, fixture.bytes, fixture.len);
 }
 
+static void mutate_signature_u16_and_expect_rejected(const struct u16_mutation *mutation) {
+    struct image_fixture fixture = {0};
+    size_t absolute_offset = 0u;
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load fixture for %s\n", mutation->name);
+        ++failures;
+        return;
+    }
+
+    if (!checked_add_size(fixture.signature_offset, mutation->offset, &absolute_offset)) {
+        (void)fprintf(stderr, "signature mutation offset overflowed for %s\n", mutation->name);
+        ++failures;
+        return;
+    }
+
+    EXPECT_TRUE(write_u16_le(fixture.bytes, fixture.len, absolute_offset, mutation->value));
+    expect_rejected(mutation->name, fixture.bytes, fixture.len);
+}
+
+static void mutate_signature_u32_and_expect_rejected(const struct u32_mutation *mutation) {
+    struct image_fixture fixture = {0};
+    size_t absolute_offset = 0u;
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load fixture for %s\n", mutation->name);
+        ++failures;
+        return;
+    }
+
+    if (!checked_add_size(fixture.signature_offset, mutation->offset, &absolute_offset)) {
+        (void)fprintf(stderr, "signature mutation offset overflowed for %s\n", mutation->name);
+        ++failures;
+        return;
+    }
+
+    EXPECT_TRUE(write_u32_le(fixture.bytes, fixture.len, absolute_offset, mutation->value));
+    expect_rejected(mutation->name, fixture.bytes, fixture.len);
+}
+
+static void mutate_signature_byte_and_expect_rejected(const char *name, size_t relative_offset,
+                                                      uint8_t value) {
+    struct image_fixture fixture = {0};
+    size_t absolute_offset = 0u;
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load fixture for %s\n", name);
+        ++failures;
+        return;
+    }
+
+    if (!checked_add_size(fixture.signature_offset, relative_offset, &absolute_offset) ||
+        (absolute_offset >= fixture.len)) {
+        (void)fprintf(stderr, "signature byte mutation is out of bounds for %s\n", name);
+        ++failures;
+        return;
+    }
+
+    fixture.bytes[absolute_offset] = value;
+    expect_rejected(name, fixture.bytes, fixture.len);
+}
+
 static void test_image_accepts_canonical_vector(void) {
     struct image_fixture fixture = {0};
     struct rampart_image_view image = {0};
@@ -423,6 +495,39 @@ static void test_image_rejects_manifest_payload_size_disagreement(void) {
     expect_rejected("manifest payload size differs from image header", fixture.bytes, fixture.len);
 }
 
+static void test_image_rejects_invalid_signature_header(void) {
+    static const struct u16_mutation u16_mutations[] = {
+        {"unknown signature section version", signature_version_offset, 2u},
+        {"invalid signature header size", signature_header_size_offset, 31u},
+        {"zero signature count", signature_count_offset, 0u},
+        {"unsupported signature count", signature_count_offset, 2u},
+        {"unsupported signature section algorithm", signature_algorithm_offset, 2u},
+        {"truncated signature record size", signature_record_size_offset, 159u},
+        {"oversized signature record size", signature_record_size_offset, 161u},
+        {"nonzero signature header reserved field", signature_reserved_offset, 1u},
+    };
+    static const struct u32_mutation u32_mutations[] = {
+        {"truncated declared signature section", signature_section_size_offset, 191u},
+        {"oversized declared signature section", signature_section_size_offset, 193u},
+        {"signature metadata signed region starts early", signature_signed_region_offset, 63u},
+        {"signature metadata signed region starts late", signature_signed_region_offset, 65u},
+        {"signature metadata signed region is truncated", signature_signed_region_size_offset,
+         191u},
+        {"signature metadata signed region is oversized", signature_signed_region_size_offset,
+         193u},
+    };
+    size_t index = 0u;
+
+    for (index = 0u; index < (sizeof(u16_mutations) / sizeof(u16_mutations[0])); ++index) {
+        mutate_signature_u16_and_expect_rejected(&u16_mutations[index]);
+    }
+    for (index = 0u; index < (sizeof(u32_mutations) / sizeof(u32_mutations[0])); ++index) {
+        mutate_signature_u32_and_expect_rejected(&u32_mutations[index]);
+    }
+
+    mutate_signature_byte_and_expect_rejected("invalid signature section magic", 0u, 0u);
+}
+
 int main(void) {
     test_image_accepts_canonical_vector();
     test_image_rejects_invalid_arguments_without_output();
@@ -430,6 +535,7 @@ int main(void) {
     test_image_rejects_invalid_header_fields();
     test_image_rejects_noncanonical_section_layouts();
     test_image_rejects_manifest_payload_size_disagreement();
+    test_image_rejects_invalid_signature_header();
 
     if (failures != 0) {
         (void)fprintf(stderr, "%d image test failure(s)\n", failures);
