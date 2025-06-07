@@ -11,7 +11,12 @@ include(CTest)
 option(RAMPART_BUILD_TESTS "Build Rampart host-side C tests" ON)
 option(RAMPART_ENABLE_SANITIZERS "Enable ASan/UBSan for host C targets" OFF)
 option(RAMPART_ENABLE_CLANG_TIDY "Enable clang-tidy for C targets" OFF)
+option(RAMPART_BUILD_FUZZERS "Build host libFuzzer parser harnesses" OFF)
 option(RAMPART_BUILD_EMBEDDED "Build embedded firmware images" ${CMAKE_CROSSCOMPILING})
+
+if(RAMPART_BUILD_FUZZERS AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "RAMPART_BUILD_FUZZERS requires Clang with libFuzzer")
+endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -41,6 +46,11 @@ function(rampart_apply_common_options target_name)
             PRIVATE $<$<COMPILE_LANGUAGE:C>:-fsanitize=address,undefined>
                     $<$<COMPILE_LANGUAGE:C>:-fno-omit-frame-pointer>)
         target_link_options(${target_name} PRIVATE -fsanitize=address,undefined)
+    endif()
+
+    if(RAMPART_BUILD_FUZZERS AND NOT CMAKE_CROSSCOMPILING)
+        target_compile_options(
+            ${target_name} PRIVATE $<$<COMPILE_LANGUAGE:C>:-fsanitize=fuzzer-no-link>)
     endif()
 
     if(RAMPART_ENABLE_CLANG_TIDY)
@@ -89,4 +99,8 @@ add_subdirectory(stage1)
 
 if(BUILD_TESTING AND RAMPART_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(tests/unit)
+endif()
+
+if(RAMPART_BUILD_FUZZERS AND NOT CMAKE_CROSSCOMPILING)
+    add_subdirectory(tests/fuzz)
 endif()
