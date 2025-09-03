@@ -23,6 +23,19 @@
       }
     },
     {
+      "name": "host-fuzz",
+      "displayName": "Host parser fuzzing with ASan/UBSan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "RAMPART_BUILD_FUZZERS": "ON",
+        "RAMPART_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
       "name": "host-tidy",
       "displayName": "Host Debug with clang-tidy",
       "generator": "Ninja",
@@ -56,6 +69,10 @@
       "configurePreset": "host-sanitize"
     },
     {
+      "name": "host-fuzz",
+      "configurePreset": "host-fuzz"
+    },
+    {
       "name": "host-tidy",
       "configurePreset": "host-tidy"
     },
@@ -78,7 +95,16 @@
       "output": {
         "outputOnFailure": true
       }
+    },
+    {
+      "name": "host-fuzz",
+      "configurePreset": "host-fuzz",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }
-

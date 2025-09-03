@@ -3,6 +3,7 @@ target/
 compile_commands.json
 *.elf
 *.bin
+!tests/fuzz/corpus/**/*.bin
 *.map
 *.o
 *.a

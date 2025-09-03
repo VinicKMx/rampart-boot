@@ -65,6 +65,17 @@ cmake --build --preset host-sanitize
 ctest --preset host-sanitize
 ```
 
+Bounded parser fuzz smoke tests with Clang, libFuzzer, ASan, and UBSan:
+
+```bash
+cmake --preset host-fuzz
+cmake --build --preset host-fuzz
+ctest --preset host-fuzz
+```
+
+Tracked seeds remain read-only. Generated corpus entries and crash artifacts stay under
+`build/host-fuzz/`.
+
 STM32U585 minimal firmware build:
 
 ```bash
