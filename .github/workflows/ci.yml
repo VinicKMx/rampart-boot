@@ -53,6 +53,15 @@ jobs:
       - name: Test sanitizers
         run: ctest --preset host-sanitize
 
+      - name: Configure parser fuzzing
+        run: cmake --preset host-fuzz
+
+      - name: Build parser fuzzing
+        run: cmake --build --preset host-fuzz
+
+      - name: Test parser fuzzing
+        run: ctest --preset host-fuzz
+
       - name: Configure STM32U585
         run: cmake --preset stm32u585
 
