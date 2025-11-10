@@ -76,3 +76,6 @@ jobs:
 
       - name: Rust tests
         run: cargo test --workspace
+
+      - name: Verify canonical v1 artifact
+        run: cargo run --quiet -p rampart -- image verify tests/vectors/image-v1/valid.rampart
