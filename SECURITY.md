@@ -45,8 +45,16 @@ one-way operations.
 
 ## Known limitations
 
-At the current checkpoint, Rampart has only the repository foundation, initial C contracts, minimal
-Stage 0/Stage 1 build targets, and host CLI scaffolding. Image authentication, flash transactions,
-health contracts, journaling, recovery, anti-rollback storage, and TrustZone hardening are not yet
-implemented.
+At the current checkpoint, the Rust host CLI can sign, inspect, and verify canonical v1 artifacts.
+Its verifier checks the payload digest, embedded-key signature, target binding, and minimum security
+epoch policy inputs. The independent C parser structurally validates canonical v1 artifacts and is
+covered by deterministic invalid, truncation, and boundary tests plus bounded ASan/UBSan fuzzing on
+the host.
 
+These host results do not authorize an image for device boot. Device trust-store integration, key
+roles and revocation enforcement, cryptographic backend integration in the trusted boot path, and
+Stage 0/Stage 1 enforcement of authenticated boot eligibility are not implemented. The STM32U585
+firmware is target-built only and has not been validated on hardware or through HIL.
+
+Flash transactions, health contracts, journaling, recovery, anti-rollback storage, and TrustZone
+hardening are also not yet implemented.

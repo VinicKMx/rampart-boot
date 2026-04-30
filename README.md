@@ -65,6 +65,10 @@ cmake --build --preset host-sanitize
 ctest --preset host-sanitize
 ```
 
+The C suites parse the committed Rust-generated v1 artifact and cover invalid fields,
+non-canonical layouts, every truncated prefix, boundary lengths, and unchanged output views on
+rejection.
+
 Bounded parser fuzz smoke tests with Clang, libFuzzer, ASan, and UBSan:
 
 ```bash
@@ -73,8 +77,13 @@ cmake --build --preset host-fuzz
 ctest --preset host-fuzz
 ```
 
-Tracked seeds remain read-only. Generated corpus entries and crash artifacts stay under
-`build/host-fuzz/`.
+The smoke preset replays tracked canonical and truncated seeds and runs each production parser
+harness for 100,000 inputs. Tracked seeds remain read-only. Generated corpus entries and crash
+artifacts stay under `build/host-fuzz/`. A reproducible finding is minimized and retained only when
+it protects a specific parser regression.
+
+These bounded runs provide sampled host memory-safety evidence, not proof over every input. The
+fuzz preset disables leak detection with `ASAN_OPTIONS=detect_leaks=0`.
 
 STM32U585 minimal firmware build:
 
@@ -89,6 +98,16 @@ Rust host CLI:
 cargo test --workspace
 cargo run -p rampart -- self-check
 ```
+
+Verify the committed canonical artifact consumed by the C parser tests:
+
+```bash
+cargo run --quiet -p rampart -- image verify tests/vectors/image-v1/valid.rampart
+```
+
+This host command verifies the payload digest, embedded-key signature, target binding, and security
+epoch policy inputs. It does not authorize the key through a device trust store or make the image
+eligible to boot.
 
 Create and verify a single-image artifact:
 
