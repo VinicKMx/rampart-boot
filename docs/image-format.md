@@ -66,6 +66,11 @@ manifest bytes || payload bytes
 The image header is validated for canonical layout but is not part of the signed region. Security
 decisions must come from authenticated manifest fields and verified payload bytes.
 
+The payload digest is SHA-256 over exactly the payload bytes. ECDSA-P256-SHA256 signs the SHA-256
+digest of exactly the signed-region bytes above. A message-oriented verifier receives those
+original signed-region bytes and applies SHA-256 exactly once; callers must not prehash them before
+using that operation.
+
 ## Manifest Section
 
 The manifest begins with a fixed 128-byte header followed by `artifact_id` bytes and zero padding to
@@ -147,8 +152,30 @@ Record layout:
 | 80 | 65 | public key | uncompressed SEC1 P-256 public key |
 | 145 | 15 | padding | zero |
 
+The raw signature is:
+
+```text
+r[32] || s[32]
+```
+
+Each scalar is an unsigned 32-byte big-endian P-256 value. Artifact signatures are not ASN.1 DER.
+Both scalars must be valid for P-256; malformed, zero, or out-of-range values are rejected.
+
+The public key is:
+
+```text
+0x04 || x[32] || y[32]
+```
+
+The coordinates are unsigned big-endian P-256 values and must encode a valid curve point. The key
+ID is the first eight bytes of SHA-256 over this complete 65-byte SEC1 encoding. A key ID collision
+or disagreement with trusted public material must never be resolved by accepting the embedded key.
+
 The public key is embedded so host tooling can verify test artifacts without a device trust store.
-Boot authorization must still be evaluated against the device trust store in the boot path.
+It is untrusted artifact input on a device and does not establish signer authority. Boot
+authorization must resolve the key ID through the device trust store, reject unknown or ambiguous
+records, require the embedded key to agree with trusted public material, and perform signature
+verification using the trusted material.
 
 ## Manifest TOML Used by Host Tooling
 

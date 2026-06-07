@@ -62,6 +62,14 @@ The portable core must not know STM32, ESP32, USB, BLE, HTTPS, filesystems, or a
 Platform adapters provide flash, crypto, monotonic counters, reset reason, watchdog, random,
 protection, device identity, physical presence, and jump services.
 
+The portable core owns validation order, trust policy, and authorization. A crypto provider owns
+only the requested cryptographic operation: it cannot authorize a key, approve target or epoch
+policy, select an image, or publish boot eligibility. Provider inputs remain caller-owned and
+immutable for the complete call, and a provider must not retain their addresses after returning.
+
+A host crypto provider is compatibility and test evidence only. It does not select the backend for
+an embedded target and does not establish target hardware, HIL, or production security evidence.
+
 ## Commit philosophy
 
 An update is a transaction. Power loss can happen before or after any persistent operation. Rampart

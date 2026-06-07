@@ -30,14 +30,66 @@ acceptance on health evidence.
 Reference algorithms for STM32 are SHA-256 and ECDSA P-256. Algorithms must be explicit in artifact
 formats and must not be inferred from context.
 
-Cryptographic backends provide:
+The portable verification boundary supports algorithm-explicit operations. For image format v1:
 
-- hashing;
-- signature verification;
+- SHA-256 hashes exactly the caller-supplied byte sequence;
+- ECDSA-P256-SHA256 receives the original message bytes, hashes them exactly once with SHA-256, and
+  verifies the resulting digest with P-256;
+- the message for an image signature is exactly the parser-validated signed region;
+- signatures are fixed-width raw `r || s` values, not ASN.1 DER supplied by the artifact;
+- public keys are uncompressed SEC1 P-256 points.
+
+A prehashed signature interface, if one is introduced in a later format or provider, must use a
+different algorithm-explicit contract. Callers must not prehash input passed to the v1
+ECDSA-P256-SHA256 message operation.
+
+### Provider Boundary
+
+The portable core supplies a caller-owned provider and context. Provider inputs are bounded,
+immutable byte spans whose lifetime covers the call. Providers must not retain input or output
+pointers after returning. The portable core uses no dynamic allocation and does not expose a global
+mutable provider.
+
+Provider success is exactly `RAMPART_OK`. Every other result is conservative:
+
+- an invalid signature rejects authentication;
+- a malformed key or signature rejects authentication;
+- an unsupported algorithm rejects before use;
+- a missing operation or provider failure rejects authentication;
+- hash output is published only after the provider reports success.
+
+Invalid cryptographic evidence and an internal provider failure may have different diagnostic
+statuses, but neither can make an image eligible. Callers must not convert provider results to a
+best-effort boolean or continue after an error.
+
+Host adapters may use allocation required by their vetted library, but that allocation remains
+inside the host adapter and must be released on every path. This does not permit dynamic allocation
+in the portable core, Stage 0, Stage 1, or an embedded trusted boot path.
+
+Broader platform crypto services may also provide:
+
 - random generation when needed;
 - platform-specific protected key or monotonic services where available.
 
 Rampart must never implement SHA, ECDSA, Ed25519, RSA, AES, or TRNG logic from scratch.
+
+### Verification Is Not Authorization
+
+A provider proves only whether cryptographic math succeeds for the supplied bytes and public key.
+It does not decide:
+
+- whether the public key is trusted;
+- whether the key is revoked, expired, or development-only;
+- whether the key has the required role;
+- whether the device lifecycle permits the key;
+- whether target binding or security epoch policy passes;
+- whether an image is boot-eligible or selected.
+
+Image format v1 embeds a public key so host tooling can perform self-contained verification. That
+key is untrusted artifact input on a device. Device authorization must resolve trusted public
+material from the trust store, reject ambiguous key IDs, require agreement with the embedded key,
+and verify using the trusted material. A key ID is an identifier, not proof of key ownership or
+authorization.
 
 ## Authenticated Decision Fields
 
