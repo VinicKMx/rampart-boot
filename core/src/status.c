@@ -32,6 +32,10 @@ const char *rampart_status_string(rampart_status_t status) {
         return "no bootable image";
     case RAMPART_ERR_INTERNAL:
         return "internal error";
+    case RAMPART_ERR_UNSUPPORTED_ALGORITHM:
+        return "unsupported algorithm";
+    case RAMPART_ERR_CRYPTO_PROVIDER:
+        return "crypto provider failure";
     default:
         return "unknown error";
     }

@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "rampart/crypto.h"
 #include "rampart/status.h"
 #include "rampart/target.h"
 
@@ -14,10 +15,8 @@ extern "C" {
 #define RAMPART_MANIFEST_FORMAT_VERSION_1 (1u)
 #define RAMPART_MANIFEST_HEADER_SIZE_V1 (128u)
 #define RAMPART_MANIFEST_ARTIFACT_ID_MAX_SIZE (128u)
-#define RAMPART_SHA256_DIGEST_SIZE (32u)
 #define RAMPART_KEY_ID_SIZE (8u)
 
-#define RAMPART_HASH_ALGORITHM_SHA256 (1u)
 #define RAMPART_SIGNATURE_ALGORITHM_ECDSA_P256_SHA256 (1u)
 
 #define RAMPART_KEY_ROLE_RELEASE (1u)

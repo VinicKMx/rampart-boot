@@ -1,6 +1,7 @@
 add_library(
     rampart_core STATIC
     src/binary.c
+    src/crypto.c
     src/image.c
     src/manifest.c
     src/status.c
