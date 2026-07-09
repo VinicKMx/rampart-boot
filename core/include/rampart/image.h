@@ -17,8 +17,6 @@ extern "C" {
 
 #define RAMPART_SIGNATURE_SECTION_SIZE_V1 (192u)
 #define RAMPART_SIGNATURE_KEY_ID_SIZE (8u)
-#define RAMPART_SIGNATURE_ECDSA_P256_SIZE (64u)
-#define RAMPART_PUBLIC_KEY_P256_SEC1_SIZE (65u)
 
 struct rampart_signature_view {
     const uint8_t *key_id;
