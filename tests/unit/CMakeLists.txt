@@ -6,3 +6,10 @@ target_compile_definitions(
 rampart_apply_common_options(rampart_unit_tests)
 
 add_test(NAME rampart_unit_tests COMMAND rampart_unit_tests)
+
+add_executable(rampart_manifest_tests test_manifest.c)
+
+target_link_libraries(rampart_manifest_tests PRIVATE rampart_core)
+rampart_apply_common_options(rampart_manifest_tests)
+
+add_test(NAME rampart_manifest_tests COMMAND rampart_manifest_tests)
