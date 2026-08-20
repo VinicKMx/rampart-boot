@@ -1,111 +1,11 @@
 #include "rampart/image.h"
 
-#include <stdbool.h>
-
-static bool bytes_equal(const uint8_t *left, const uint8_t *right, size_t len) {
-    size_t index = 0u;
-
-    for (index = 0u; index < len; ++index) {
-        if (left[index] != right[index]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool bytes_match(const uint8_t *left, const char *right, size_t len) {
-    size_t index = 0u;
-
-    for (index = 0u; index < len; ++index) {
-        if (left[index] != (uint8_t)right[index]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool all_zeroes(const uint8_t *bytes, size_t len) {
-    size_t index = 0u;
-
-    for (index = 0u; index < len; ++index) {
-        if (bytes[index] != 0u) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static rampart_status_t checked_add_size(size_t left, size_t right, size_t *out) {
-    if (out == NULL) {
-        return RAMPART_ERR_INVALID_ARGUMENT;
-    }
-
-    if (right > (SIZE_MAX - left)) {
-        return RAMPART_ERR_OVERFLOW;
-    }
-
-    *out = left + right;
-    return RAMPART_OK;
-}
-
-static bool range_available(size_t offset, size_t len, size_t total_len, size_t *end) {
-    if (offset > total_len) {
-        return false;
-    }
-
-    if (len > (total_len - offset)) {
-        return false;
-    }
-
-    if (end != NULL) {
-        *end = offset + len;
-    }
-
-    return true;
-}
-
-static rampart_status_t read_u16_le(const uint8_t *bytes, size_t len, size_t offset,
-                                    uint16_t *out) {
-    size_t end = 0u;
-
-    if ((bytes == NULL) || (out == NULL)) {
-        return RAMPART_ERR_INVALID_ARGUMENT;
-    }
-
-    if (!range_available(offset, 2u, len, &end)) {
-        return RAMPART_ERR_BOUNDS;
-    }
-
-    (void)end;
-    *out = (uint16_t)((uint16_t)bytes[offset] | ((uint16_t)bytes[offset + 1u] << 8u));
-    return RAMPART_OK;
-}
-
-static rampart_status_t read_u32_le(const uint8_t *bytes, size_t len, size_t offset,
-                                    uint32_t *out) {
-    size_t end = 0u;
-
-    if ((bytes == NULL) || (out == NULL)) {
-        return RAMPART_ERR_INVALID_ARGUMENT;
-    }
-
-    if (!range_available(offset, 4u, len, &end)) {
-        return RAMPART_ERR_BOUNDS;
-    }
-
-    (void)end;
-    *out = ((uint32_t)bytes[offset]) | ((uint32_t)bytes[offset + 1u] << 8u) |
-           ((uint32_t)bytes[offset + 2u] << 16u) | ((uint32_t)bytes[offset + 3u] << 24u);
-    return RAMPART_OK;
-}
+#include "binary.h"
 
 static rampart_status_t require_u16(const uint8_t *bytes, size_t len, size_t offset,
                                     uint16_t expected) {
     uint16_t actual = 0u;
-    rampart_status_t status = read_u16_le(bytes, len, offset, &actual);
+    rampart_status_t status = rampart_binary_read_u16_le(bytes, len, offset, &actual);
 
     if (status != RAMPART_OK) {
         return status;
@@ -121,7 +21,7 @@ static rampart_status_t require_u16(const uint8_t *bytes, size_t len, size_t off
 static rampart_status_t require_u32(const uint8_t *bytes, size_t len, size_t offset,
                                     uint32_t expected) {
     uint32_t actual = 0u;
-    rampart_status_t status = read_u32_le(bytes, len, offset, &actual);
+    rampart_status_t status = rampart_binary_read_u32_le(bytes, len, offset, &actual);
 
     if (status != RAMPART_OK) {
         return status;
@@ -154,7 +54,7 @@ static rampart_status_t validate_signature_section(const uint8_t *bytes, size_t 
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    if (!bytes_match(bytes, "RPSIGN01", 8u)) {
+    if (!rampart_binary_bytes_match(bytes, "RPSIGN01", 8u)) {
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
@@ -196,7 +96,7 @@ static rampart_status_t validate_signature_section(const uint8_t *bytes, size_t 
     }
 
     key_id = &bytes[record_offset];
-    if (!bytes_equal(key_id, manifest->key_id, RAMPART_KEY_ID_SIZE)) {
+    if (!rampart_binary_bytes_equal(key_id, manifest->key_id, RAMPART_KEY_ID_SIZE)) {
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
@@ -225,7 +125,7 @@ static rampart_status_t validate_signature_section(const uint8_t *bytes, size_t 
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    if (!all_zeroes(&bytes[record_padding_offset], len - record_padding_offset)) {
+    if (!rampart_binary_all_zeroes(&bytes[record_padding_offset], len - record_padding_offset)) {
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
@@ -269,23 +169,23 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    if (!bytes_match(bytes, "RMPIMG01", 8u)) {
+    if (!rampart_binary_bytes_match(bytes, "RMPIMG01", 8u)) {
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    status = read_u16_le(bytes, len, 8u, &image_version);
+    status = rampart_binary_read_u16_le(bytes, len, 8u, &image_version);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 10u, &image_kind);
+    status = rampart_binary_read_u16_le(bytes, len, 10u, &image_kind);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 12u, &header_size);
+    status = rampart_binary_read_u16_le(bytes, len, 12u, &header_size);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u16_le(bytes, len, 14u, &flags);
+    status = rampart_binary_read_u16_le(bytes, len, 14u, &flags);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -296,40 +196,40 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    status = read_u32_le(bytes, len, 16u, &manifest_offset_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 16u, &manifest_offset_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 20u, &manifest_size_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 20u, &manifest_size_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 24u, &payload_offset_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 24u, &payload_offset_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 28u, &payload_size_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 28u, &payload_size_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 32u, &signature_offset_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 32u, &signature_offset_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 36u, &signature_size_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 36u, &signature_size_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 40u, &signed_region_offset_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 40u, &signed_region_offset_u32);
     if (status != RAMPART_OK) {
         return status;
     }
-    status = read_u32_le(bytes, len, 44u, &signed_region_size_u32);
+    status = rampart_binary_read_u32_le(bytes, len, 44u, &signed_region_size_u32);
     if (status != RAMPART_OK) {
         return status;
     }
 
-    if (!all_zeroes(&bytes[48u], RAMPART_IMAGE_HEADER_SIZE - 48u)) {
+    if (!rampart_binary_all_zeroes(&bytes[48u], RAMPART_IMAGE_HEADER_SIZE - 48u)) {
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
@@ -348,8 +248,8 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    status =
-        checked_add_size(parsed.manifest_offset, parsed.manifest_size, &expected_payload_offset);
+    status = rampart_binary_checked_add_size(parsed.manifest_offset, parsed.manifest_size,
+                                             &expected_payload_offset);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -357,8 +257,8 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    status =
-        checked_add_size(parsed.payload_offset, parsed.payload_size, &expected_signature_offset);
+    status = rampart_binary_checked_add_size(parsed.payload_offset, parsed.payload_size,
+                                             &expected_signature_offset);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -366,7 +266,8 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    status = checked_add_size(parsed.signature_offset, parsed.signature_size, &expected_file_len);
+    status = rampart_binary_checked_add_size(parsed.signature_offset, parsed.signature_size,
+                                             &expected_file_len);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -378,8 +279,8 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    status =
-        checked_add_size(parsed.manifest_size, parsed.payload_size, &expected_signed_region_size);
+    status = rampart_binary_checked_add_size(parsed.manifest_size, parsed.payload_size,
+                                             &expected_signed_region_size);
     if (status != RAMPART_OK) {
         return status;
     }
@@ -387,10 +288,12 @@ rampart_status_t rampart_image_parse(const uint8_t *bytes, size_t len,
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
-    if (!range_available(parsed.manifest_offset, parsed.manifest_size, len, NULL) ||
-        !range_available(parsed.payload_offset, parsed.payload_size, len, NULL) ||
-        !range_available(parsed.signature_offset, parsed.signature_size, len, NULL) ||
-        !range_available(parsed.signed_region_offset, parsed.signed_region_size, len, NULL)) {
+    if (!rampart_binary_range_available(parsed.manifest_offset, parsed.manifest_size, len, NULL) ||
+        !rampart_binary_range_available(parsed.payload_offset, parsed.payload_size, len, NULL) ||
+        !rampart_binary_range_available(parsed.signature_offset, parsed.signature_size, len,
+                                        NULL) ||
+        !rampart_binary_range_available(parsed.signed_region_offset, parsed.signed_region_size, len,
+                                        NULL)) {
         return RAMPART_ERR_IMAGE_FORMAT;
     }
 
