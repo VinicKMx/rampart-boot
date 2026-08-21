@@ -510,8 +510,10 @@ fn parse_manifest(bytes: &[u8]) -> Result<RampartManifest, String> {
     }
 
     let artifact_id_end = checked_add(MANIFEST_HEADER_SIZE, artifact_id_len)?;
-    if artifact_id_end > bytes.len() {
-        return Err("artifact_id extends beyond manifest bounds".to_string());
+    let padding_len = (4 - (artifact_id_end % 4)) % 4;
+    let canonical_manifest_size = checked_add(artifact_id_end, padding_len)?;
+    if canonical_manifest_size != bytes.len() {
+        return Err("manifest padding length is not canonical".to_string());
     }
 
     require_zeroes(&bytes[120..MANIFEST_HEADER_SIZE], "manifest reserved bytes")?;
@@ -1082,7 +1084,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        DeviceTarget, IMAGE_HEADER_SIZE, VerificationOptions, parse_image, sign_image, verify_image,
+        DeviceTarget, IMAGE_HEADER_SIZE, MANIFEST_ARTIFACT_ID_MAX, RampartManifest,
+        VerificationOptions, encode_manifest, parse_image, parse_manifest, sign_image,
+        verify_image, write_u32,
     };
 
     const TEST_PRIVATE_KEY_DER: [u8; 138] = [
@@ -1097,6 +1101,66 @@ mod tests {
         0xAB, 0x93, 0x58, 0x66, 0xDD, 0x5B, 0xED, 0xF2, 0xE8, 0xFB, 0x93, 0x88, 0xEA, 0x46, 0xCF,
         0xB9, 0xE2, 0x4F,
     ];
+
+    fn test_manifest(artifact_id: String) -> RampartManifest {
+        RampartManifest {
+            artifact_id,
+            vendor_id: 0x5241_4D50,
+            product_id: 1,
+            hardware_family: 0x585,
+            hardware_revision_min: 1,
+            hardware_revision_max: 3,
+            component_id: 0x10,
+            security_epoch: 12,
+            version_major: 2,
+            version_minor: 4,
+            version_patch: 0,
+            payload_size: 32,
+            payload_digest: [0xA5; 32],
+            signature_role: 1,
+            signature_threshold: 1,
+            signature_count: 1,
+            key_id: [0x5A; 8],
+            trial_max_attempts: 3,
+            trial_probation_ms: 30_000,
+            rollback_policy: 1,
+            requirement_count: 0,
+            dependency_count: 0,
+            health_required_count: 0,
+        }
+    }
+
+    #[test]
+    fn parses_canonical_manifest_artifact_id_boundaries() {
+        for artifact_id_len in [1, MANIFEST_ARTIFACT_ID_MAX] {
+            let artifact_id = "A".repeat(artifact_id_len);
+            let encoded = encode_manifest(&test_manifest(artifact_id.clone())).expect("encode");
+            let parsed = parse_manifest(&encoded).expect("parse canonical manifest");
+
+            assert_eq!(parsed.artifact_id, artifact_id);
+        }
+    }
+
+    #[test]
+    fn rejects_noncanonical_manifest_padding_lengths() {
+        let mut missing_padding = encode_manifest(&test_manifest("A".to_string())).expect("encode");
+        missing_padding.pop();
+        let missing_len = u32::try_from(missing_padding.len()).expect("manifest size fits u32");
+        write_u32(&mut missing_padding, 12, missing_len);
+        assert_eq!(
+            parse_manifest(&missing_padding).expect_err("missing padding must be rejected"),
+            "manifest padding length is not canonical"
+        );
+
+        let mut excess_padding = encode_manifest(&test_manifest("A".to_string())).expect("encode");
+        excess_padding.push(0);
+        let excess_len = u32::try_from(excess_padding.len()).expect("manifest size fits u32");
+        write_u32(&mut excess_padding, 12, excess_len);
+        assert_eq!(
+            parse_manifest(&excess_padding).expect_err("excess padding must be rejected"),
+            "manifest padding length is not canonical"
+        );
+    }
 
     #[test]
     fn signs_and_verifies_image_artifact() {
