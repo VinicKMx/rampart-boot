@@ -13,3 +13,12 @@ target_link_libraries(rampart_manifest_tests PRIVATE rampart_core)
 rampart_apply_common_options(rampart_manifest_tests)
 
 add_test(NAME rampart_manifest_tests COMMAND rampart_manifest_tests)
+
+add_executable(rampart_image_tests test_image.c)
+
+target_link_libraries(rampart_image_tests PRIVATE rampart_core)
+target_compile_definitions(
+    rampart_image_tests PRIVATE RAMPART_TEST_VECTOR_DIR="${PROJECT_SOURCE_DIR}/tests/vectors/image-v1")
+rampart_apply_common_options(rampart_image_tests)
+
+add_test(NAME rampart_image_tests COMMAND rampart_image_tests)
