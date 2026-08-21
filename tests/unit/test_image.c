@@ -15,10 +15,21 @@ struct image_fixture {
     size_t signature_offset;
 };
 
+struct u16_mutation {
+    const char *name;
+    size_t offset;
+    uint16_t value;
+};
+
 static int failures = 0;
 
+static const size_t image_format_version_offset = 8u;
+static const size_t image_kind_offset = 10u;
+static const size_t image_header_size_offset = 12u;
+static const size_t image_flags_offset = 14u;
 static const size_t manifest_offset_field = 16u;
 static const size_t signature_offset_field = 32u;
+static const size_t image_reserved_offset = 48u;
 
 #define EXPECT_TRUE(expression)                                                                    \
     do {                                                                                           \
@@ -45,6 +56,16 @@ static bool read_u32_le(const uint8_t *bytes, size_t len, size_t offset, uint32_
 
     *out = ((uint32_t)bytes[offset]) | ((uint32_t)bytes[offset + 1u] << 8u) |
            ((uint32_t)bytes[offset + 2u] << 16u) | ((uint32_t)bytes[offset + 3u] << 24u);
+    return true;
+}
+
+static bool write_u16_le(uint8_t *bytes, size_t len, size_t offset, uint16_t value) {
+    if ((bytes == NULL) || (offset > len) || (2u > (len - offset))) {
+        return false;
+    }
+
+    bytes[offset] = (uint8_t)value;
+    bytes[offset + 1u] = (uint8_t)(value >> 8u);
     return true;
 }
 
@@ -168,6 +189,19 @@ static void expect_rejected(const char *name, const uint8_t *bytes, size_t len) 
     }
 }
 
+static void mutate_header_u16_and_expect_rejected(const struct u16_mutation *mutation) {
+    struct image_fixture fixture = {0};
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load fixture for %s\n", mutation->name);
+        ++failures;
+        return;
+    }
+
+    EXPECT_TRUE(write_u16_le(fixture.bytes, fixture.len, mutation->offset, mutation->value));
+    expect_rejected(mutation->name, fixture.bytes, fixture.len);
+}
+
 static void test_image_accepts_canonical_vector(void) {
     struct image_fixture fixture = {0};
     struct rampart_image_view image = {0};
@@ -222,10 +256,50 @@ static void test_image_rejects_every_truncated_prefix(void) {
     }
 }
 
+static void test_image_rejects_invalid_header_fields(void) {
+    static const struct u16_mutation mutations[] = {
+        {"unknown image format version", image_format_version_offset, 2u},
+        {"unknown image artifact kind", image_kind_offset, 2u},
+        {"invalid image header size", image_header_size_offset, 63u},
+        {"unsupported image flags", image_flags_offset, 1u},
+    };
+    struct image_fixture fixture = {0};
+    size_t index = 0u;
+
+    for (index = 0u; index < (sizeof(mutations) / sizeof(mutations[0])); ++index) {
+        mutate_header_u16_and_expect_rejected(&mutations[index]);
+    }
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load image-header fixture\n");
+        ++failures;
+        return;
+    }
+    fixture.bytes[0u] ^= 0x01u;
+    expect_rejected("invalid image magic", fixture.bytes, fixture.len);
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to reload image-header fixture\n");
+        ++failures;
+        return;
+    }
+    fixture.bytes[image_reserved_offset] = 1u;
+    expect_rejected("first image reserved byte is nonzero", fixture.bytes, fixture.len);
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to reload image-header fixture\n");
+        ++failures;
+        return;
+    }
+    fixture.bytes[RAMPART_IMAGE_HEADER_SIZE - 1u] = 1u;
+    expect_rejected("last image reserved byte is nonzero", fixture.bytes, fixture.len);
+}
+
 int main(void) {
     test_image_accepts_canonical_vector();
     test_image_rejects_invalid_arguments_without_output();
     test_image_rejects_every_truncated_prefix();
+    test_image_rejects_invalid_header_fields();
 
     if (failures != 0) {
         (void)fprintf(stderr, "%d image test failure(s)\n", failures);
