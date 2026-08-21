@@ -54,6 +54,13 @@ static const size_t signature_count_offset = 24u;
 static const size_t signature_algorithm_offset = 26u;
 static const size_t signature_record_size_offset = 28u;
 static const size_t signature_reserved_offset = 30u;
+static const size_t signature_record_key_id_offset = 32u;
+static const size_t signature_record_algorithm_offset = 40u;
+static const size_t signature_record_public_key_algorithm_offset = 42u;
+static const size_t signature_record_signature_size_offset = 44u;
+static const size_t signature_record_public_key_size_offset = 46u;
+static const size_t signature_record_public_key_offset = 112u;
+static const size_t signature_record_padding_offset = 177u;
 
 #define EXPECT_TRUE(expression)                                                                    \
     do {                                                                                           \
@@ -528,6 +535,43 @@ static void test_image_rejects_invalid_signature_header(void) {
     mutate_signature_byte_and_expect_rejected("invalid signature section magic", 0u, 0u);
 }
 
+static void test_image_rejects_invalid_signature_record(void) {
+    static const struct u16_mutation mutations[] = {
+        {"unsupported signature record algorithm", signature_record_algorithm_offset, 2u},
+        {"unsupported public key algorithm", signature_record_public_key_algorithm_offset, 2u},
+        {"truncated signature value size", signature_record_signature_size_offset, 63u},
+        {"oversized signature value size", signature_record_signature_size_offset, 65u},
+        {"truncated public key size", signature_record_public_key_size_offset, 64u},
+        {"oversized public key size", signature_record_public_key_size_offset, 66u},
+    };
+    char name[64u] = {0};
+    size_t index = 0u;
+    int written = 0;
+
+    mutate_signature_byte_and_expect_rejected("signature key ID differs from manifest",
+                                              signature_record_key_id_offset, 0u);
+
+    for (index = 0u; index < (sizeof(mutations) / sizeof(mutations[0])); ++index) {
+        mutate_signature_u16_and_expect_rejected(&mutations[index]);
+    }
+
+    mutate_signature_byte_and_expect_rejected("invalid uncompressed SEC1 prefix",
+                                              signature_record_public_key_offset, 0u);
+
+    for (index = signature_record_padding_offset; index < RAMPART_SIGNATURE_SECTION_SIZE_V1;
+         ++index) {
+        written = snprintf(name, sizeof(name), "nonzero signature record padding byte %zu",
+                           index - signature_record_padding_offset);
+        if ((written < 0) || ((size_t)written >= sizeof(name))) {
+            (void)fprintf(stderr, "failed to format signature padding case name\n");
+            ++failures;
+            return;
+        }
+
+        mutate_signature_byte_and_expect_rejected(name, index, 1u);
+    }
+}
+
 int main(void) {
     test_image_accepts_canonical_vector();
     test_image_rejects_invalid_arguments_without_output();
@@ -536,6 +580,7 @@ int main(void) {
     test_image_rejects_noncanonical_section_layouts();
     test_image_rejects_manifest_payload_size_disagreement();
     test_image_rejects_invalid_signature_header();
+    test_image_rejects_invalid_signature_record();
 
     if (failures != 0) {
         (void)fprintf(stderr, "%d image test failure(s)\n", failures);
