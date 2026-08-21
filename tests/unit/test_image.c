@@ -21,6 +21,12 @@ struct u16_mutation {
     uint16_t value;
 };
 
+struct u32_mutation {
+    const char *name;
+    size_t offset;
+    uint32_t value;
+};
+
 static int failures = 0;
 
 static const size_t image_format_version_offset = 8u;
@@ -28,8 +34,16 @@ static const size_t image_kind_offset = 10u;
 static const size_t image_header_size_offset = 12u;
 static const size_t image_flags_offset = 14u;
 static const size_t manifest_offset_field = 16u;
+static const size_t manifest_size_offset = 20u;
+static const size_t payload_offset_field = 24u;
+static const size_t payload_size_offset = 28u;
 static const size_t signature_offset_field = 32u;
+static const size_t signature_size_offset = 36u;
+static const size_t signed_region_offset_field = 40u;
+static const size_t signed_region_size_offset = 44u;
 static const size_t image_reserved_offset = 48u;
+
+static const size_t manifest_payload_size_offset = 52u;
 
 #define EXPECT_TRUE(expression)                                                                    \
     do {                                                                                           \
@@ -66,6 +80,27 @@ static bool write_u16_le(uint8_t *bytes, size_t len, size_t offset, uint16_t val
 
     bytes[offset] = (uint8_t)value;
     bytes[offset + 1u] = (uint8_t)(value >> 8u);
+    return true;
+}
+
+static bool write_u32_le(uint8_t *bytes, size_t len, size_t offset, uint32_t value) {
+    if ((bytes == NULL) || (offset > len) || (4u > (len - offset))) {
+        return false;
+    }
+
+    bytes[offset] = (uint8_t)value;
+    bytes[offset + 1u] = (uint8_t)(value >> 8u);
+    bytes[offset + 2u] = (uint8_t)(value >> 16u);
+    bytes[offset + 3u] = (uint8_t)(value >> 24u);
+    return true;
+}
+
+static bool checked_add_size(size_t left, size_t right, size_t *out) {
+    if ((out == NULL) || (right > (SIZE_MAX - left))) {
+        return false;
+    }
+
+    *out = left + right;
     return true;
 }
 
@@ -202,6 +237,19 @@ static void mutate_header_u16_and_expect_rejected(const struct u16_mutation *mut
     expect_rejected(mutation->name, fixture.bytes, fixture.len);
 }
 
+static void mutate_header_u32_and_expect_rejected(const struct u32_mutation *mutation) {
+    struct image_fixture fixture = {0};
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load fixture for %s\n", mutation->name);
+        ++failures;
+        return;
+    }
+
+    EXPECT_TRUE(write_u32_le(fixture.bytes, fixture.len, mutation->offset, mutation->value));
+    expect_rejected(mutation->name, fixture.bytes, fixture.len);
+}
+
 static void test_image_accepts_canonical_vector(void) {
     struct image_fixture fixture = {0};
     struct rampart_image_view image = {0};
@@ -295,11 +343,93 @@ static void test_image_rejects_invalid_header_fields(void) {
     expect_rejected("last image reserved byte is nonzero", fixture.bytes, fixture.len);
 }
 
+static void test_image_rejects_noncanonical_section_layouts(void) {
+    struct image_fixture reference = {0};
+    uint32_t manifest_size = 0u;
+    uint32_t payload_offset = 0u;
+    uint32_t signature_offset = 0u;
+    uint32_t signature_size = 0u;
+    uint32_t signed_region_size = 0u;
+    size_t index = 0u;
+
+    if (!load_valid_image(&reference) ||
+        !read_u32_le(reference.bytes, reference.len, manifest_size_offset, &manifest_size) ||
+        !read_u32_le(reference.bytes, reference.len, payload_offset_field, &payload_offset) ||
+        !read_u32_le(reference.bytes, reference.len, signature_offset_field, &signature_offset) ||
+        !read_u32_le(reference.bytes, reference.len, signature_size_offset, &signature_size) ||
+        !read_u32_le(reference.bytes, reference.len, signed_region_size_offset,
+                     &signed_region_size)) {
+        (void)fprintf(stderr, "failed to read canonical image layout\n");
+        ++failures;
+        return;
+    }
+
+    const struct u32_mutation mutations[] = {
+        {"manifest overlaps image header", manifest_offset_field, RAMPART_IMAGE_HEADER_SIZE - 1u},
+        {"manifest leaves gap after image header", manifest_offset_field,
+         RAMPART_IMAGE_HEADER_SIZE + 1u},
+        {"manifest size leaves gap before payload", manifest_size_offset, manifest_size - 1u},
+        {"manifest size overlaps payload", manifest_size_offset, manifest_size + 1u},
+        {"manifest size reaches u32 boundary", manifest_size_offset, UINT32_MAX},
+        {"payload overlaps manifest", payload_offset_field, payload_offset - 1u},
+        {"payload leaves gap after manifest", payload_offset_field, payload_offset + 1u},
+        {"payload size reaches u32 boundary", payload_size_offset, UINT32_MAX},
+        {"signature overlaps payload", signature_offset_field, signature_offset - 1u},
+        {"signature leaves gap after payload", signature_offset_field, signature_offset + 1u},
+        {"signature section is truncated", signature_size_offset, signature_size - 1u},
+        {"signature section is oversized", signature_size_offset, signature_size + 1u},
+        {"signature size reaches u32 boundary", signature_size_offset, UINT32_MAX},
+        {"signed region starts before manifest", signed_region_offset_field,
+         RAMPART_IMAGE_HEADER_SIZE - 1u},
+        {"signed region starts after manifest", signed_region_offset_field,
+         RAMPART_IMAGE_HEADER_SIZE + 1u},
+        {"signed region is truncated", signed_region_size_offset, signed_region_size - 1u},
+        {"signed region is oversized", signed_region_size_offset, signed_region_size + 1u},
+        {"signed region size reaches u32 boundary", signed_region_size_offset, UINT32_MAX},
+    };
+
+    for (index = 0u; index < (sizeof(mutations) / sizeof(mutations[0])); ++index) {
+        mutate_header_u32_and_expect_rejected(&mutations[index]);
+    }
+
+    if (!load_valid_image(&reference)) {
+        (void)fprintf(stderr, "failed to reload image layout fixture\n");
+        ++failures;
+        return;
+    }
+    reference.bytes[reference.len] = 0u;
+    ++reference.len;
+    expect_rejected("trailing bytes after signature section", reference.bytes, reference.len);
+}
+
+static void test_image_rejects_manifest_payload_size_disagreement(void) {
+    struct image_fixture fixture = {0};
+    size_t absolute_offset = 0u;
+
+    if (!load_valid_image(&fixture)) {
+        (void)fprintf(stderr, "failed to load manifest payload-size fixture\n");
+        ++failures;
+        return;
+    }
+
+    if (!checked_add_size(fixture.manifest_offset, manifest_payload_size_offset,
+                          &absolute_offset)) {
+        (void)fprintf(stderr, "manifest payload-size offset overflowed\n");
+        ++failures;
+        return;
+    }
+
+    EXPECT_TRUE(write_u32_le(fixture.bytes, fixture.len, absolute_offset, 31u));
+    expect_rejected("manifest payload size differs from image header", fixture.bytes, fixture.len);
+}
+
 int main(void) {
     test_image_accepts_canonical_vector();
     test_image_rejects_invalid_arguments_without_output();
     test_image_rejects_every_truncated_prefix();
     test_image_rejects_invalid_header_fields();
+    test_image_rejects_noncanonical_section_layouts();
+    test_image_rejects_manifest_payload_size_disagreement();
 
     if (failures != 0) {
         (void)fprintf(stderr, "%d image test failure(s)\n", failures);
