@@ -3,3 +3,9 @@ add_executable(rampart_manifest_fuzzer fuzz_manifest.c)
 target_link_libraries(rampart_manifest_fuzzer PRIVATE rampart_core)
 rampart_apply_common_options(rampart_manifest_fuzzer)
 target_link_options(rampart_manifest_fuzzer PRIVATE -fsanitize=fuzzer)
+
+add_executable(rampart_image_fuzzer fuzz_image.c)
+
+target_link_libraries(rampart_image_fuzzer PRIVATE rampart_core)
+rampart_apply_common_options(rampart_image_fuzzer)
+target_link_options(rampart_image_fuzzer PRIVATE -fsanitize=fuzzer)
