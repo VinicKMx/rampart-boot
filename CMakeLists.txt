@@ -14,6 +14,16 @@ option(RAMPART_ENABLE_CLANG_TIDY "Enable clang-tidy for C targets" OFF)
 option(RAMPART_BUILD_FUZZERS "Build host libFuzzer parser harnesses" OFF)
 option(RAMPART_BUILD_EMBEDDED "Build embedded firmware images" ${CMAKE_CROSSCOMPILING})
 
+set(RAMPART_HOST_OPENSSL_DEFAULT ${RAMPART_BUILD_TESTS})
+if(CMAKE_CROSSCOMPILING)
+    set(RAMPART_HOST_OPENSSL_DEFAULT OFF)
+endif()
+option(
+    RAMPART_BUILD_HOST_OPENSSL_PROVIDER
+    "Build the host-only OpenSSL crypto provider"
+    ${RAMPART_HOST_OPENSSL_DEFAULT})
+unset(RAMPART_HOST_OPENSSL_DEFAULT)
+
 if(RAMPART_BUILD_FUZZERS AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "RAMPART_BUILD_FUZZERS requires Clang with libFuzzer")
 endif()
@@ -94,6 +104,14 @@ function(rampart_apply_embedded_options target_name)
 endfunction()
 
 add_subdirectory(core)
+
+if(RAMPART_BUILD_HOST_OPENSSL_PROVIDER)
+    if(CMAKE_CROSSCOMPILING)
+        message(FATAL_ERROR "The OpenSSL crypto provider is host-only")
+    endif()
+    add_subdirectory(platform/host)
+endif()
+
 add_subdirectory(stage0)
 add_subdirectory(stage1)
 

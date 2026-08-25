@@ -29,3 +29,12 @@ target_link_libraries(rampart_crypto_tests PRIVATE rampart_core)
 rampart_apply_common_options(rampart_crypto_tests)
 
 add_test(NAME rampart_crypto_tests COMMAND rampart_crypto_tests)
+
+if(TARGET rampart_host_openssl)
+    add_executable(rampart_openssl_crypto_tests test_openssl_crypto.c)
+
+    target_link_libraries(rampart_openssl_crypto_tests PRIVATE rampart_host_openssl)
+    rampart_apply_common_options(rampart_openssl_crypto_tests)
+
+    add_test(NAME rampart_openssl_crypto_tests COMMAND rampart_openssl_crypto_tests)
+endif()

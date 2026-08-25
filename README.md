@@ -49,6 +49,8 @@ coordination.
 
 ## Build
 
+Host C builds require OpenSSL 3 development headers and libraries (`libssl-dev` on Ubuntu).
+
 Host build:
 
 ```bash
