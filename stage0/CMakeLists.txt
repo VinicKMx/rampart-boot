@@ -13,7 +13,7 @@ if(RAMPART_BUILD_EMBEDDED)
         rampart_stage0_image
         src/reset.c
         ${PROJECT_SOURCE_DIR}/platform/stm32u5/startup_cortex_m33.S)
-    target_link_libraries(rampart_stage0_image PRIVATE rampart_stage0 rampart_core)
+    target_link_libraries(rampart_stage0_image PRIVATE rampart_stage0)
     rampart_apply_common_options(rampart_stage0_image)
     rampart_apply_embedded_options(rampart_stage0_image)
     set_target_properties(rampart_stage0_image PROPERTIES OUTPUT_NAME stage0.elf)
