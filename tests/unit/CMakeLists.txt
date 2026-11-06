@@ -37,6 +37,13 @@ rampart_apply_common_options(rampart_trust_tests)
 
 add_test(NAME rampart_trust_tests COMMAND rampart_trust_tests)
 
+add_executable(rampart_trust_matrix_tests test_trust_matrix.c)
+
+target_link_libraries(rampart_trust_matrix_tests PRIVATE rampart_core)
+rampart_apply_common_options(rampart_trust_matrix_tests)
+
+add_test(NAME rampart_trust_matrix_tests COMMAND rampart_trust_matrix_tests)
+
 if(TARGET rampart_host_openssl)
     add_executable(rampart_openssl_crypto_tests test_openssl_crypto.c)
 
