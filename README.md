@@ -49,7 +49,9 @@ coordination.
 
 ## Build
 
-Host C builds require OpenSSL 3 development headers and libraries (`libssl-dev` on Ubuntu).
+Host C test builds require OpenSSL 3 development headers and libraries (`libssl-dev` on
+Ubuntu) for the host-only reference crypto provider. Configure with
+`-DRAMPART_BUILD_HOST_OPENSSL_PROVIDER=OFF` to skip it. Embedded builds never link OpenSSL.
 
 Host build:
 
