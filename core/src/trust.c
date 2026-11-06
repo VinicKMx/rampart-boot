@@ -59,3 +59,58 @@ rampart_status_t rampart_trust_store_validate(const struct rampart_trust_store *
     }
     return RAMPART_OK;
 }
+
+static bool valid_role(uint16_t role) {
+    return (role == RAMPART_KEY_ROLE_RELEASE) || (role == RAMPART_KEY_ROLE_SECURITY) ||
+           (role == RAMPART_KEY_ROLE_BOOT_MANAGER) || (role == RAMPART_KEY_ROLE_RECOVERY) ||
+           (role == RAMPART_KEY_ROLE_FACTORY) || (role == RAMPART_KEY_ROLE_DEVELOPMENT);
+}
+
+rampart_status_t rampart_trust_authorize(const struct rampart_trust_store *store,
+                                         const struct rampart_crypto_provider *provider,
+                                         const struct rampart_trust_request *request,
+                                         struct rampart_trust_result *result) {
+    const struct rampart_trust_record *matched = NULL;
+    rampart_status_t status = RAMPART_OK;
+    size_t index = 0u;
+
+    if ((store == NULL) || (provider == NULL) || (request == NULL) || (result == NULL)) {
+        return RAMPART_ERR_INVALID_ARGUMENT;
+    }
+    if ((request->key_id == NULL) || (request->key_id_len != RAMPART_KEY_ID_SIZE) ||
+        !valid_role(request->required_role) || !valid_role(request->manifest_role) ||
+        ((request->lifecycle != RAMPART_LIFECYCLE_DEVELOPMENT) &&
+         (request->lifecycle != RAMPART_LIFECYCLE_PRODUCTION))) {
+        return RAMPART_ERR_INVALID_ARGUMENT;
+    }
+    status = rampart_trust_store_validate(store, provider);
+    if (status != RAMPART_OK) {
+        return status;
+    }
+    for (index = 0u; index < store->count; ++index) {
+        if (key_ids_equal(store->records[index].key_id, request->key_id)) {
+            matched = &store->records[index];
+            break; /* Validation has already proved every ID unique. */
+        }
+    }
+    if (matched == NULL) {
+        return RAMPART_ERR_KEY_UNKNOWN;
+    }
+    if (matched->status == RAMPART_TRUST_KEY_REVOKED) {
+        return RAMPART_ERR_KEY_REVOKED;
+    }
+    if (matched->status == RAMPART_TRUST_KEY_EXPIRED) {
+        return RAMPART_ERR_KEY_EXPIRED;
+    }
+    if ((request->lifecycle == RAMPART_LIFECYCLE_PRODUCTION) &&
+        ((matched->status == RAMPART_TRUST_KEY_DEVELOPMENT_ONLY) ||
+         (request->required_role == RAMPART_KEY_ROLE_DEVELOPMENT))) {
+        return RAMPART_ERR_KEY_LIFECYCLE;
+    }
+    if ((request->manifest_role != request->required_role) ||
+        ((matched->roles & (UINT32_C(1) << request->required_role)) == 0u)) {
+        return RAMPART_ERR_KEY_ROLE;
+    }
+    result->record = matched;
+    return RAMPART_OK;
+}

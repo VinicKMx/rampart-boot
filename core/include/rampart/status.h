@@ -23,7 +23,11 @@ typedef enum rampart_status {
     RAMPART_ERR_INTERNAL,
     RAMPART_ERR_UNSUPPORTED_ALGORITHM,
     RAMPART_ERR_CRYPTO_PROVIDER,
-    RAMPART_ERR_TRUST_STORE
+    RAMPART_ERR_TRUST_STORE,
+    RAMPART_ERR_KEY_UNKNOWN,
+    RAMPART_ERR_KEY_EXPIRED,
+    RAMPART_ERR_KEY_ROLE,
+    RAMPART_ERR_KEY_LIFECYCLE
 } rampart_status_t;
 
 const char *rampart_status_string(rampart_status_t status);

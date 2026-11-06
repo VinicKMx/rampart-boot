@@ -45,6 +45,15 @@ int main(void) {
     const struct rampart_trust_store store = {.records = &record, .count = 1u};
     struct rampart_crypto_provider provider = rampart_host_openssl_provider(NULL);
     uint8_t digest[RAMPART_SHA256_DIGEST_SIZE];
+    const struct rampart_trust_record sentinel = {0};
+    struct rampart_trust_result result = {.record = &sentinel};
+    const struct rampart_trust_request request = {
+        .key_id = record.key_id,
+        .key_id_len = sizeof(record.key_id),
+        .required_role = RAMPART_KEY_ROLE_RELEASE,
+        .manifest_role = RAMPART_KEY_ROLE_RELEASE,
+        .lifecycle = RAMPART_LIFECYCLE_PRODUCTION,
+    };
 
     if (!provision_fixture_record(&record)) {
         (void)fprintf(stderr, "could not provision public fixture record\n");
@@ -59,9 +68,21 @@ int main(void) {
         (void)fprintf(stderr, "Rust-derived fixture ID did not validate\n");
         return 1;
     }
+    if ((rampart_trust_authorize(&store, &provider, &request, &result) != RAMPART_OK) ||
+        (result.record != &record) || (result.record->key_epoch != UINT32_MAX)) {
+        (void)fprintf(stderr, "provisioned fixture authority did not pass\n");
+        return 1;
+    }
+    result.record = &sentinel;
     record.key_id[0] ^= 1u;
     if (rampart_trust_store_validate(&store, &provider) != RAMPART_ERR_TRUST_STORE) {
         (void)fprintf(stderr, "inconsistent fixture ID did not reject\n");
+        return 1;
+    }
+    if ((rampart_trust_authorize(&store, &provider, &request, &result) !=
+         RAMPART_ERR_TRUST_STORE) ||
+        (result.record != &sentinel)) {
+        (void)fprintf(stderr, "failed fixture authorization changed output\n");
         return 1;
     }
     return 0;

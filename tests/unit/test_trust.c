@@ -199,7 +199,207 @@ static void test_provider_failures(void) {
     EXPECT_TRUE(strcmp(rampart_status_string(RAMPART_ERR_TRUST_STORE), "invalid trust store") == 0);
 }
 
+static struct rampart_trust_request make_request(const uint8_t *key_id) {
+    const struct rampart_trust_request request = {
+        .key_id = key_id,
+        .key_id_len = RAMPART_KEY_ID_SIZE,
+        .required_role = RAMPART_KEY_ROLE_RELEASE,
+        .manifest_role = RAMPART_KEY_ROLE_RELEASE,
+        .lifecycle = RAMPART_LIFECYCLE_DEVELOPMENT,
+    };
+    return request;
+}
+
+static void expect_authorization(const struct rampart_trust_store *store,
+                                 const struct rampart_crypto_provider *provider,
+                                 const struct rampart_trust_request *request,
+                                 rampart_status_t expected,
+                                 const struct rampart_trust_record *expected_record) {
+    const struct rampart_trust_record sentinel = {0};
+    struct rampart_trust_result result = {.record = &sentinel};
+
+    EXPECT_STATUS(expected, rampart_trust_authorize(store, provider, request, &result));
+    EXPECT_TRUE(result.record == ((expected == RAMPART_OK) ? expected_record : &sentinel));
+}
+
+static void test_authorization_request_rejections(void) {
+    struct rampart_trust_record record = make_record(1u);
+    const struct rampart_trust_store store = {.records = &record, .count = 1u};
+    struct hash_state state = {0};
+    const struct rampart_crypto_provider provider = {.context = &state, .sha256 = fake_hash};
+    struct rampart_trust_request request = make_request(record.key_id);
+    const size_t lengths[] = {0u, RAMPART_KEY_ID_SIZE - 1u, RAMPART_KEY_ID_SIZE + 1u, SIZE_MAX};
+    const uint16_t unknown_values[] = {0u, 7u, 31u, 32u, UINT16_MAX};
+    size_t index = 0u;
+
+    expect_authorization(NULL, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    expect_authorization(&store, NULL, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    expect_authorization(&store, &provider, NULL, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    EXPECT_STATUS(RAMPART_ERR_INVALID_ARGUMENT,
+                  rampart_trust_authorize(&store, &provider, &request, NULL));
+    request.key_id = NULL;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    request = make_request(record.key_id);
+    for (index = 0u; index < sizeof(lengths) / sizeof(lengths[0]); ++index) {
+        request.key_id_len = lengths[index];
+        expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    }
+    for (index = 0u; index < sizeof(unknown_values) / sizeof(unknown_values[0]); ++index) {
+        request = make_request(record.key_id);
+        request.required_role = unknown_values[index];
+        expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+        request = make_request(record.key_id);
+        request.manifest_role = unknown_values[index];
+        expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    }
+    request = make_request(record.key_id);
+    request.lifecycle = 0u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    request.lifecycle = 3u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    request.lifecycle = UINT16_MAX;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_INVALID_ARGUMENT, NULL);
+    EXPECT_TRUE(state.calls == 0u);
+}
+
+static void test_authorization_validates_the_entire_store(void) {
+    struct rampart_trust_record records[2u] = {make_record(1u), make_record(2u)};
+    struct rampart_trust_store store = {.records = records, .count = 2u};
+    struct hash_state state = {0};
+    struct rampart_crypto_provider provider = {.context = &state, .sha256 = fake_hash};
+    const struct rampart_trust_request request = make_request(records[0].key_id);
+    const rampart_status_t errors[] = {RAMPART_ERR_CRYPTO_PROVIDER, RAMPART_ERR_INTERNAL,
+                                       RAMPART_ERR_KEY_REVOKED};
+    size_t index = 0u;
+    size_t failing_record = 0u;
+
+    expect_authorization(&store, &provider, &request, RAMPART_OK, &records[0]);
+    records[1].algorithm = 0u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1] = make_record(2u);
+    records[1].roles = 0u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1].roles = 1u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1] = make_record(2u);
+    records[1].public_key[0] = 0x02u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1] = make_record(2u);
+    records[1].status = 0u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1] = make_record(2u);
+    records[1].key_id[7] ^= 1u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1] = records[0];
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    records[1] = make_record(2u);
+    for (index = 0u; index < sizeof(errors) / sizeof(errors[0]); ++index) {
+        for (failing_record = 1u; failing_record <= store.count; ++failing_record) {
+            state.calls = 0u;
+            state.fail_on_call = failing_record;
+            state.failure = errors[index];
+            expect_authorization(&store, &provider, &request, RAMPART_ERR_CRYPTO_PROVIDER, NULL);
+            EXPECT_TRUE(state.calls == failing_record);
+        }
+    }
+    state.fail_on_call = 0u;
+    provider.sha256 = NULL;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_CRYPTO_PROVIDER, NULL);
+    provider.sha256 = fake_hash;
+    store.records = NULL;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    store.records = records;
+    store.count = 0u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    store.count = RAMPART_TRUST_STORE_MAX_KEYS + 1u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_TRUST_STORE, NULL);
+    store.count = 2u;
+    expect_authorization(&store, &provider, &request, RAMPART_OK, &records[0]);
+}
+
+static void test_lookup_and_unenforced_epoch(void) {
+    struct rampart_trust_record records[3u] = {make_record(1u), make_record(2u), make_record(3u)};
+    const struct rampart_trust_store store = {.records = records, .count = 3u};
+    struct hash_state state = {0};
+    const struct rampart_crypto_provider provider = {.context = &state, .sha256 = fake_hash};
+    uint8_t unknown_id[RAMPART_KEY_ID_SIZE] = {1u};
+    struct rampart_trust_request request = make_request(unknown_id);
+    struct rampart_trust_result result = {0};
+    const uint32_t epochs[] = {0u, 1u, UINT32_MAX};
+    size_t index = 0u;
+    size_t epoch_index = 0u;
+
+    unknown_id[7] = 1u;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_KEY_UNKNOWN, NULL);
+    for (index = 0u; index < store.count; ++index) {
+        request = make_request(records[index].key_id);
+        for (epoch_index = 0u; epoch_index < sizeof(epochs) / sizeof(epochs[0]); ++epoch_index) {
+            records[index].key_epoch = epochs[epoch_index];
+            expect_authorization(&store, &provider, &request, RAMPART_OK, &records[index]);
+            EXPECT_STATUS(RAMPART_OK,
+                          rampart_trust_authorize(&store, &provider, &request, &result));
+            if (result.record == &records[index]) {
+                EXPECT_TRUE(result.record->key_epoch == epochs[epoch_index]);
+            } else {
+                EXPECT_TRUE(false);
+            }
+        }
+    }
+}
+
+static void test_focused_authorization_policy(void) {
+    struct rampart_trust_record record = make_record(1u);
+    const struct rampart_trust_store store = {.records = &record, .count = 1u};
+    struct hash_state state = {0};
+    const struct rampart_crypto_provider provider = {.context = &state, .sha256 = fake_hash};
+    struct rampart_trust_request request = make_request(record.key_id);
+    const rampart_status_t development_results[] = {RAMPART_OK, RAMPART_ERR_KEY_REVOKED,
+                                                    RAMPART_ERR_KEY_EXPIRED, RAMPART_OK};
+    const rampart_status_t production_results[] = {
+        RAMPART_OK, RAMPART_ERR_KEY_REVOKED, RAMPART_ERR_KEY_EXPIRED, RAMPART_ERR_KEY_LIFECYCLE};
+    uint16_t role = 0u;
+    uint16_t manifest_role = 0u;
+    size_t index = 0u;
+
+    for (index = 0u; index < 4u; ++index) {
+        record.status = (rampart_trust_key_status_t)(index + 1u);
+        request.lifecycle = RAMPART_LIFECYCLE_DEVELOPMENT;
+        expect_authorization(&store, &provider, &request, development_results[index], &record);
+        request.lifecycle = RAMPART_LIFECYCLE_PRODUCTION;
+        expect_authorization(&store, &provider, &request, production_results[index], &record);
+    }
+    record.status = RAMPART_TRUST_KEY_TRUSTED;
+    record.roles = RAMPART_TRUST_ROLES_ALL;
+    request.lifecycle = RAMPART_LIFECYCLE_DEVELOPMENT;
+    for (role = 1u; role <= 6u; ++role) {
+        request.required_role = role;
+        for (manifest_role = 1u; manifest_role <= 6u; ++manifest_role) {
+            request.manifest_role = manifest_role;
+            expect_authorization(&store, &provider, &request,
+                                 (role == manifest_role) ? RAMPART_OK : RAMPART_ERR_KEY_ROLE,
+                                 &record);
+        }
+        request.manifest_role = role;
+        record.roles = RAMPART_TRUST_ROLES_ALL & ~(UINT32_C(1) << role);
+        expect_authorization(&store, &provider, &request, RAMPART_ERR_KEY_ROLE, NULL);
+        record.roles = RAMPART_TRUST_ROLES_ALL;
+    }
+    request.required_role = RAMPART_KEY_ROLE_DEVELOPMENT;
+    request.manifest_role = RAMPART_KEY_ROLE_DEVELOPMENT;
+    request.lifecycle = RAMPART_LIFECYCLE_PRODUCTION;
+    expect_authorization(&store, &provider, &request, RAMPART_ERR_KEY_LIFECYCLE, NULL);
+    EXPECT_TRUE(strcmp(rampart_status_string(RAMPART_ERR_KEY_UNKNOWN), "unknown key") == 0);
+    EXPECT_TRUE(strcmp(rampart_status_string(RAMPART_ERR_KEY_EXPIRED), "key expired") == 0);
+    EXPECT_TRUE(strcmp(rampart_status_string(RAMPART_ERR_KEY_ROLE), "key role rejected") == 0);
+    EXPECT_TRUE(
+        strcmp(rampart_status_string(RAMPART_ERR_KEY_LIFECYCLE), "key lifecycle rejected") == 0);
+}
+
 int main(void) {
+    test_authorization_request_rejections();
+    test_authorization_validates_the_entire_store();
+    test_lookup_and_unenforced_epoch();
+    test_focused_authorization_policy();
     test_store_bounds_and_immutability();
     test_record_fields();
     test_duplicate_pairs_and_revalidation();

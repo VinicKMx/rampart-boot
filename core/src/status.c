@@ -38,6 +38,14 @@ const char *rampart_status_string(rampart_status_t status) {
         return "crypto provider failure";
     case RAMPART_ERR_TRUST_STORE:
         return "invalid trust store";
+    case RAMPART_ERR_KEY_UNKNOWN:
+        return "unknown key";
+    case RAMPART_ERR_KEY_EXPIRED:
+        return "key expired";
+    case RAMPART_ERR_KEY_ROLE:
+        return "key role rejected";
+    case RAMPART_ERR_KEY_LIFECYCLE:
+        return "key lifecycle rejected";
     default:
         return "unknown error";
     }

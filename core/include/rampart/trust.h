@@ -51,6 +51,34 @@ struct rampart_trust_store {
 rampart_status_t rampart_trust_store_validate(const struct rampart_trust_store *store,
                                               const struct rampart_crypto_provider *provider);
 
+typedef uint16_t rampart_device_lifecycle_t;
+
+#define RAMPART_LIFECYCLE_DEVELOPMENT (1u)
+#define RAMPART_LIFECYCLE_PRODUCTION (2u)
+
+struct rampart_trust_request {
+    const uint8_t *key_id;
+    size_t key_id_len;
+    uint16_t required_role;
+    uint16_t manifest_role;
+    rampart_device_lifecycle_t lifecycle;
+};
+
+struct rampart_trust_result {
+    const struct rampart_trust_record *record;
+};
+
+/* Revalidate the whole store; publish only on success. The result borrows a
+ * record whose caller-owned storage must remain valid and immutable in use.
+ * Required role comes from device policy, never from the manifest alone.
+ * All inputs remain immutable during the call; result storage is separate.
+ * Authority for one role alone is not image authentication or boot eligibility.
+ */
+rampart_status_t rampart_trust_authorize(const struct rampart_trust_store *store,
+                                         const struct rampart_crypto_provider *provider,
+                                         const struct rampart_trust_request *request,
+                                         struct rampart_trust_result *result);
+
 #ifdef __cplusplus
 }
 #endif
