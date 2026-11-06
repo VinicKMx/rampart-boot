@@ -30,6 +30,13 @@ rampart_apply_common_options(rampart_crypto_tests)
 
 add_test(NAME rampart_crypto_tests COMMAND rampart_crypto_tests)
 
+add_executable(rampart_trust_tests test_trust.c)
+
+target_link_libraries(rampart_trust_tests PRIVATE rampart_core)
+rampart_apply_common_options(rampart_trust_tests)
+
+add_test(NAME rampart_trust_tests COMMAND rampart_trust_tests)
+
 if(TARGET rampart_host_openssl)
     add_executable(rampart_openssl_crypto_tests test_openssl_crypto.c)
 
@@ -47,4 +54,14 @@ if(TARGET rampart_host_openssl)
     rampart_apply_common_options(rampart_image_crypto_tests)
 
     add_test(NAME rampart_image_crypto_tests COMMAND rampart_image_crypto_tests)
+
+    add_executable(rampart_trust_openssl_tests test_trust_openssl.c)
+
+    target_link_libraries(rampart_trust_openssl_tests PRIVATE rampart_host_openssl)
+    target_compile_definitions(
+        rampart_trust_openssl_tests
+        PRIVATE RAMPART_TEST_VECTOR_DIR="${PROJECT_SOURCE_DIR}/tests/vectors/image-v1")
+    rampart_apply_common_options(rampart_trust_openssl_tests)
+
+    add_test(NAME rampart_trust_openssl_tests COMMAND rampart_trust_openssl_tests)
 endif()

@@ -36,6 +36,8 @@ const char *rampart_status_string(rampart_status_t status) {
         return "unsupported algorithm";
     case RAMPART_ERR_CRYPTO_PROVIDER:
         return "crypto provider failure";
+    case RAMPART_ERR_TRUST_STORE:
+        return "invalid trust store";
     default:
         return "unknown error";
     }
