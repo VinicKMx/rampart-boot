@@ -37,4 +37,14 @@ if(TARGET rampart_host_openssl)
     rampart_apply_common_options(rampart_openssl_crypto_tests)
 
     add_test(NAME rampart_openssl_crypto_tests COMMAND rampart_openssl_crypto_tests)
+
+    add_executable(rampart_image_crypto_tests test_image_crypto.c)
+
+    target_link_libraries(rampart_image_crypto_tests PRIVATE rampart_host_openssl)
+    target_compile_definitions(
+        rampart_image_crypto_tests
+        PRIVATE RAMPART_TEST_VECTOR_DIR="${PROJECT_SOURCE_DIR}/tests/vectors/image-v1")
+    rampart_apply_common_options(rampart_image_crypto_tests)
+
+    add_test(NAME rampart_image_crypto_tests COMMAND rampart_image_crypto_tests)
 endif()
