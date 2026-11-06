@@ -120,7 +120,7 @@ arguments must not authorize execution.
 
 ## Trust Store
 
-The trust store supports multiple public keys. A key record contains:
+The immutable trust-store contract supports multiple provisioned public keys. A key record contains:
 
 - key ID;
 - algorithm;
@@ -135,7 +135,7 @@ Initial statuses:
 | --- | --- |
 | trusted | May authorize operations allowed by its role set and policy. |
 | revoked | Must not authorize any new boot or update. |
-| expired | Must not authorize new operations after the policy-defined validity window. |
+| expired | Provisioned as expired; must not authorize any new operation. |
 | development-only | May be accepted only on development lifecycle devices. |
 
 Initial roles:
@@ -148,6 +148,74 @@ Initial roles:
 | recovery | Authorizes recovery artifacts and recovery overrides. |
 | factory | Authorizes provisioning operations. |
 | development | Authorizes development artifacts on development devices only. |
+
+### Immutable Store Contract
+
+The store is a caller-owned view of 1..16 records. A NULL records pointer, empty store, or count
+above 16 is invalid. Each record holds the eight-byte key ID, signature algorithm, role set,
+32-bit key epoch, status, and 65-byte public key by value. The store and all records must remain
+valid and immutable throughout validation and authorization and while a returned record is used.
+Callers must prevent concurrent mutation; there is no heap, global mutable store, or mutation API.
+These are in-memory C contracts, not a persistent byte encoding.
+
+Each record must satisfy all of the following:
+
+- The algorithm is ECDSA-P256-SHA256 and the public key has uncompressed SEC1 prefix `0x04`.
+  Curve-point validity belongs to the crypto provider during signature verification; store
+  validation checks the encoding shape only and performs no signature verification.
+- The key ID equals the first eight bytes of SHA-256 over the complete 65-byte public key,
+  calculated through the checked crypto provider. Provider failure rejects validation.
+- The role set is a nonempty `uint32_t` mask with bit `(1u << role)` for the role values 1..6
+  defined in [image format v1](image-format.md#manifest-section). Bit 0 and all bits above 6 are
+  invalid. A key may carry several permitted role bits.
+- Status is exactly trusted, revoked, expired, or development-only. Unknown values invalidate
+  the store. Expired is a provisioned status: there is no time source or validity-window
+  calculation in this contract.
+- Every key ID is unique across the entire store, including records that cannot authorize.
+  Duplicate IDs invalidate the store even when their other fields agree. The derivation rule
+  also rejects identical public keys assigned different claimed IDs.
+
+Key epoch is represented and accessible through the authorized record, but no rule in this
+checkpoint enforces it. It is distinct from image security epoch. Key rotation semantics are
+reserved for later key-lifecycle work.
+
+Validation is stateless and validates the complete store on every authorization call. It does not
+publish a key or create a cached validation token. A malformed unrelated record or a duplicate
+anywhere in the store rejects the request rather than allowing a first-match lookup.
+
+### Key Authorization Contract
+
+The caller supplies an eight-byte key ID, the required operation role from device policy, the
+manifest role, and the device lifecycle. The only accepted lifecycles are development and
+production; both role inputs must be one of the six defined role values. Unknown lifecycle or
+role values, NULL required arguments, or an incorrect key-ID length reject as invalid arguments
+before store validation or lookup.
+
+Authorization then applies these rules in order:
+
+1. Validate the complete store, including key-ID derivation and uniqueness. Malformed,
+   inconsistent, or ambiguous records reject as an invalid store; crypto backend failure is
+   a provider error. Neither permits lookup.
+2. Resolve exactly one record by key ID. No matching record rejects as an unknown key.
+3. Reject revoked keys, then expired keys, in every lifecycle.
+4. In production, reject a development-only key or a required operation role of development.
+   This is a lifecycle rejection, even if another role check would also fail.
+5. Require the manifest role to equal the device-required role exactly and require that role
+   in the matching key's role set. Either failure is a role rejection. The manifest cannot
+   select or weaken the device-required role.
+6. Only after all checks pass, publish a pointer to the matching immutable record. Every
+   rejection leaves the caller's result unchanged. A development-only key may authorize any
+   role it carries in development lifecycle; it always rejects in production.
+
+This entry point decides key authority only. It does not read an image, compare embedded and
+trusted public material, verify a signature, evaluate target/hardware/epoch policy, or publish
+boot eligibility. A mathematically valid signature by an unauthorized key never authorizes an
+operation. Embedded artifact material never creates trust: tests may explicitly provision a
+record from a public fixture, but artifact intake cannot provision its own authority.
+
+Persistent trust manifests, rotation, and revocation persistence are not implemented by this
+contract. The broader operation policy below may require multiple roles or physical presence;
+success for one requested role alone does not satisfy those additional requirements.
 
 ## Policy Matrix
 
@@ -184,7 +252,9 @@ booting another product's firmware even when the same signing authority is used.
 
 ## Development vs Production
 
-Development devices may accept development keys. Production-locked devices must not. The device
+Development devices may accept development-only keys and the development operation role when all
+other authorization rules pass. Production devices reject both, including a trusted key requested
+for the development role. Unknown lifecycle values reject. The device
 lifecycle state must be observable and must never be hidden by tooling.
 
 Expected lifecycle behavior:
